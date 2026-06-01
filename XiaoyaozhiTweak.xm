@@ -40,7 +40,7 @@ static NSTimeInterval const kYZRetryAlertDelaySeconds = 0.7;
 static NSTimeInterval const kYZMaoPluginRegisterRetryDelay = 1.0;
 static NSInteger const kYZMaxAlertPresentAttempts = 8;
 static NSInteger const kYZCountdownSeconds = 5;
-static NSInteger const kYZMaoPluginRegisterMaxAttempts = 8;
+static NSInteger const kYZMaoPluginRegisterMaxAttempts = 120;
 static BOOL gYZIsPluginLoaded = NO;
 static YZGlassSheetController *gSheetController = nil;
 static BOOL gYZAlertScheduled = NO;
@@ -54,6 +54,7 @@ static id gYZBecomeActiveToken = nil;
 static id gYZDidLoadToken = nil;
 static id gYZWillUnloadToken = nil;
 static id gYZMemoryWarningToken = nil;
+static char kYZWeChatSettingsEntryInjectedKey;
 
 // ============================================================
 // MARK: - 工具函数
@@ -402,41 +403,174 @@ static void YZScheduleAlertAfterActivation(void) {
     YZScheduleAlertAfterDelay(kYZInitialAlertDelaySeconds);
 }
 
+static void YZRegisterWithMaoPluginCollector(void);
+
+static id YZMaoPluginManager(void) {
+    Class managerClass = NSClassFromString(kYZMaoPluginManagerClassName);
+    if (!managerClass) return nil;
+
+    SEL sharedSelector = NSSelectorFromString(@"sharedInstance");
+    if ([managerClass respondsToSelector:sharedSelector]) {
+        id manager = ((id (*)(Class, SEL))objc_msgSend)(managerClass, sharedSelector);
+        if (manager) return manager;
+    }
+
+    return managerClass;
+}
+
+static void YZScheduleMaoPluginCollectorRetry(void) {
+    if (gYZMaoPluginRegisterRetryScheduled) return;
+
+    if (gYZMaoPluginRegisterAttempts >= kYZMaoPluginRegisterMaxAttempts) {
+        NSLog(@"[小杳知] 暂未检测到 WCPluginsMgr，继续等待后续加载");
+        gYZMaoPluginRegisterAttempts = 0;
+    }
+
+    gYZMaoPluginRegisterAttempts += 1;
+    gYZMaoPluginRegisterRetryScheduled = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kYZMaoPluginRegisterRetryDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        gYZMaoPluginRegisterRetryScheduled = NO;
+        YZRegisterWithMaoPluginCollector();
+    });
+}
+
+static void YZRegisterMaoPluginSwitchIfAvailable(id manager) {
+    SEL switchSelector = NSSelectorFromString(@"registerSwitchWithTitle:key:");
+    if (!manager || ![manager respondsToSelector:switchSelector]) return;
+
+    @try {
+        ((void (*)(id, SEL, NSString *, NSString *))objc_msgSend)(manager,
+                                                                  switchSelector,
+                                                                  @"小杳知",
+                                                                  @"plugin_active");
+    } @catch (__unused NSException *exception) {
+        return;
+    }
+}
+
 static void YZRegisterWithMaoPluginCollector(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gYZMaoPluginRegistered) return;
 
-        Class managerClass = NSClassFromString(kYZMaoPluginManagerClassName);
+        id manager = YZMaoPluginManager();
         SEL registerSelector = NSSelectorFromString(@"registerControllerWithTitle:version:controller:");
-        if (managerClass && [managerClass respondsToSelector:registerSelector]) {
+        if (manager && [manager respondsToSelector:registerSelector]) {
             NSString *title = @"小杳知";
             NSString *version = [[YZPluginLifecycle sharedInstance] pluginVersion] ?: @"";
-            ((void (*)(Class, SEL, NSString *, NSString *, NSString *))objc_msgSend)(managerClass,
-                                                                                     registerSelector,
-                                                                                     title,
-                                                                                     version,
-                                                                                     kYZMaoPluginControllerClassName);
+            ((void (*)(id, SEL, NSString *, NSString *, NSString *))objc_msgSend)(manager,
+                                                                                  registerSelector,
+                                                                                  title,
+                                                                                  version,
+                                                                                  kYZMaoPluginControllerClassName);
+            YZRegisterMaoPluginSwitchIfAvailable(manager);
             gYZMaoPluginRegistered = YES;
             gYZMaoPluginRegisterRetryScheduled = NO;
+            gYZMaoPluginRegisterAttempts = 0;
             NSLog(@"[小杳知] 已注册到老猫微信插件管理: %@ %@", title, version);
             return;
         }
 
-        if (gYZMaoPluginRegisterRetryScheduled || gYZMaoPluginRegisterAttempts >= kYZMaoPluginRegisterMaxAttempts) {
-            if (gYZMaoPluginRegisterAttempts == kYZMaoPluginRegisterMaxAttempts) {
-                NSLog(@"[小杳知] 未检测到 WCPluginsMgr，跳过老猫收纳注册");
-                gYZMaoPluginRegisterAttempts += 1;
-            }
-            return;
-        }
-
-        gYZMaoPluginRegisterAttempts += 1;
-        gYZMaoPluginRegisterRetryScheduled = YES;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kYZMaoPluginRegisterRetryDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            gYZMaoPluginRegisterRetryScheduled = NO;
-            YZRegisterWithMaoPluginCollector();
-        });
+        YZScheduleMaoPluginCollectorRetry();
     });
+}
+
+static id YZWeChatSettingsTableInfo(id controller) {
+    NSArray<NSString *> *keys = @[@"m_tableViewInfo", @"m_tableViewMgr", @"tableViewInfo"];
+    for (NSString *key in keys) {
+        @try {
+            id value = [controller valueForKey:key];
+            if (value) return value;
+        } @catch (__unused NSException *exception) {
+        }
+    }
+    return nil;
+}
+
+static id YZCreateWeChatSettingsSection(void) {
+    Class sectionClass = NSClassFromString(@"MMTableViewSectionInfo") ?: NSClassFromString(@"WCTableViewSectionInfo");
+    if (!sectionClass) return nil;
+
+    NSArray<NSString *> *selectors = @[@"sectionInfoDefaut", @"sectionInfoDefault", @"sectionInfo"];
+    for (NSString *selectorName in selectors) {
+        SEL selector = NSSelectorFromString(selectorName);
+        if ([sectionClass respondsToSelector:selector]) {
+            return ((id (*)(Class, SEL))objc_msgSend)(sectionClass, selector);
+        }
+    }
+
+    return [[sectionClass alloc] init];
+}
+
+static id YZCreateWeChatSettingsCell(id target) {
+    NSArray<NSString *> *cellClassNames = @[@"WCTableViewCellManager", @"MMTableViewCellInfo"];
+    SEL selector = NSSelectorFromString(@"normalCellForSel:target:title:");
+
+    for (NSString *cellClassName in cellClassNames) {
+        Class cellClass = NSClassFromString(cellClassName);
+        if (!cellClass || ![cellClass respondsToSelector:selector]) continue;
+        return ((id (*)(Class, SEL, SEL, id, NSString *))objc_msgSend)(cellClass,
+                                                                       selector,
+                                                                       @selector(yz_openXiaoyaozhiSettings),
+                                                                       target,
+                                                                       @"小杳知");
+    }
+
+    return nil;
+}
+
+static void YZOpenSettingsFromController(UIViewController *sourceViewController) {
+    if (!sourceViewController) return;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        YZGlassSheetController *controller = [[YZGlassSheetController alloc] init];
+        UINavigationController *navigationController = sourceViewController.navigationController;
+        SEL weChatPushSelector = NSSelectorFromString(@"PushViewController:animated:");
+
+        if (navigationController && [navigationController respondsToSelector:@selector(pushViewController:animated:)]) {
+            [navigationController pushViewController:controller animated:YES];
+        } else if ([sourceViewController respondsToSelector:weChatPushSelector]) {
+            ((void (*)(id, SEL, UIViewController *, BOOL))objc_msgSend)(sourceViewController,
+                                                                        weChatPushSelector,
+                                                                        controller,
+                                                                        YES);
+        } else {
+            controller.modalPresentationStyle = UIModalPresentationFullScreen;
+            [sourceViewController presentViewController:controller animated:YES completion:nil];
+        }
+    });
+}
+
+static void YZInjectWeChatSettingsEntry(id settingController) {
+    if (!settingController || ![[YZPluginLifecycle sharedInstance] isPluginActive]) return;
+
+    id tableInfo = YZWeChatSettingsTableInfo(settingController);
+    if (!tableInfo || objc_getAssociatedObject(tableInfo, &kYZWeChatSettingsEntryInjectedKey)) return;
+
+    id section = YZCreateWeChatSettingsSection();
+    id cell = YZCreateWeChatSettingsCell(settingController);
+    if (!section || !cell) return;
+
+    SEL addCellSelector = NSSelectorFromString(@"addCell:");
+    if (![section respondsToSelector:addCellSelector]) return;
+    ((void (*)(id, SEL, id))objc_msgSend)(section, addCellSelector, cell);
+
+    SEL insertSectionSelector = NSSelectorFromString(@"insertSection:At:");
+    SEL addSectionSelector = NSSelectorFromString(@"addSection:");
+    if ([tableInfo respondsToSelector:insertSectionSelector]) {
+        ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(tableInfo, insertSectionSelector, section, 0);
+    } else if ([tableInfo respondsToSelector:addSectionSelector]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(tableInfo, addSectionSelector, section);
+    } else {
+        return;
+    }
+
+    objc_setAssociatedObject(tableInfo, &kYZWeChatSettingsEntryInjectedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    SEL tableViewSelector = NSSelectorFromString(@"getTableView");
+    if ([tableInfo respondsToSelector:tableViewSelector]) {
+        UITableView *tableView = ((UITableView *(*)(id, SEL))objc_msgSend)(tableInfo, tableViewSelector);
+        [tableView reloadData];
+    }
 }
 
 // ============================================================
@@ -548,6 +682,48 @@ static void YZXiaoyaozhiInit(void) {
 
     YZRegisterWithMaoPluginCollector();
     YZScheduleAlertAfterActivation();
+}
+
+%end
+
+%hook NewSettingViewController
+
+- (void)reloadTableData {
+    %orig;
+    YZRegisterWithMaoPluginCollector();
+    YZInjectWeChatSettingsEntry(self);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    YZRegisterWithMaoPluginCollector();
+    YZInjectWeChatSettingsEntry(self);
+}
+
+%new
+- (void)yz_openXiaoyaozhiSettings {
+    YZOpenSettingsFromController(self);
+}
+
+%end
+
+%hook SettingViewController
+
+- (void)reloadTableData {
+    %orig;
+    YZRegisterWithMaoPluginCollector();
+    YZInjectWeChatSettingsEntry(self);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    %orig;
+    YZRegisterWithMaoPluginCollector();
+    YZInjectWeChatSettingsEntry(self);
+}
+
+%new
+- (void)yz_openXiaoyaozhiSettings {
+    YZOpenSettingsFromController(self);
 }
 
 %end
