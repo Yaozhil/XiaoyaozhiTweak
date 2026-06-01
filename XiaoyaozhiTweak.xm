@@ -238,7 +238,7 @@ static UIColor *YZPromptActionColor(void) {
 }
 
 static NSString *YZAlertTitle(void) {
-    return [NSString stringWithFormat:@"%@%@", kYZAlertTitlePrefix, [[YZPluginLifecycle sharedInstance] pluginVersion]];
+    return kYZAlertTitlePrefix;
 }
 
 static void YZUpdateCountdownTitle(UIAlertAction *action, NSInteger remaining, BOOL titleUpdatesEnabled) {
@@ -409,7 +409,7 @@ static void YZRegisterWithMaoPluginCollector(void) {
         Class managerClass = NSClassFromString(kYZMaoPluginManagerClassName);
         SEL registerSelector = NSSelectorFromString(@"registerControllerWithTitle:version:controller:");
         if (managerClass && [managerClass respondsToSelector:registerSelector]) {
-            NSString *title = [[YZPluginLifecycle sharedInstance] pluginDisplayName] ?: @"小杳知";
+            NSString *title = @"小杳知";
             NSString *version = [[YZPluginLifecycle sharedInstance] pluginVersion] ?: @"";
             ((void (*)(Class, SEL, NSString *, NSString *, NSString *))objc_msgSend)(managerClass,
                                                                                      registerSelector,
