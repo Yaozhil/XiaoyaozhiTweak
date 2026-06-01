@@ -127,7 +127,8 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 
     // TableView
     CGFloat tableY = navY + navH;
-    CGFloat tableH = MAX(44, h - tableY - 60 - bottomSafe);
+    CGFloat bottomOverlayH = 88 + bottomSafe;
+    CGFloat tableH = MAX(44, h - tableY);
     self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, tableY, w, tableH) style:UITableViewStyleGrouped];
     self.tableView.backgroundColor = self.view.backgroundColor;
     self.tableView.opaque = YES;
@@ -138,7 +139,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     self.tableView.estimatedRowHeight = 0;
     self.tableView.estimatedSectionHeaderHeight = 0;
     self.tableView.estimatedSectionFooterHeight = 0;
-    self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 16, 0);
+    self.tableView.contentInset = UIEdgeInsetsMake(0, 0, bottomOverlayH + 10, 0);
     [self.view addSubview:self.tableView];
 
     // Header
@@ -146,17 +147,32 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     self.tableView.tableHeaderView = self.headerView;
 
     // 底部关注栏
-    self.bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, h - 60 - bottomSafe, w, 60 + bottomSafe)];
+    self.bottomBar = [[UIView alloc] initWithFrame:CGRectMake(0, h - bottomOverlayH, w, bottomOverlayH)];
     self.bottomBar.backgroundColor = [UIColor clearColor];
+    self.bottomBar.clipsToBounds = NO;
     [self.view addSubview:self.bottomBar];
 
+    CAGradientLayer *bottomFade = [CAGradientLayer layer];
+    bottomFade.frame = self.bottomBar.bounds;
+    bottomFade.colors = @[
+        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:0.0].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:0.92].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:1.0].CGColor
+    ];
+    bottomFade.locations = @[@0.0, @0.42, @1.0];
+    [self.bottomBar.layer addSublayer:bottomFade];
+
     CGFloat cardW = w - 36;
-    self.followCard = [[UIView alloc] initWithFrame:CGRectMake(18, 0, cardW, 48)];
-    self.followCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.72];
+    self.followCard = [[UIView alloc] initWithFrame:CGRectMake(18, 24, cardW, 48)];
+    self.followCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.86];
     self.followCard.layer.cornerRadius = 18;
     self.followCard.layer.borderWidth = 0.5;
-    self.followCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.82].CGColor;
-    self.followCard.clipsToBounds = YES;
+    self.followCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.92].CGColor;
+    self.followCard.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.10].CGColor;
+    self.followCard.layer.shadowOpacity = 1.0;
+    self.followCard.layer.shadowRadius = 18;
+    self.followCard.layer.shadowOffset = CGSizeMake(0, -3);
+    self.followCard.clipsToBounds = NO;
     self.followCard.userInteractionEnabled = YES;
 
     UITapGestureRecognizer *followTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleFollowTap)];
