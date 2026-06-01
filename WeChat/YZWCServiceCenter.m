@@ -299,7 +299,6 @@ static NSString *sCachedProfileString = nil;
         NSString *content = [self profileContent];
         if (!content) return @"未检测到证书文件";
 
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return @"无法读取证书";
 
         // 解析 ExpirationDate
@@ -339,7 +338,6 @@ static NSString *sCachedProfileString = nil;
         NSString *content = [self profileContent];
         if (!content) return NSIntegerMin;
 
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         NSRange expRange = [content rangeOfString:@"<key>ExpirationDate</key>"];
         if (expRange.location == NSNotFound) return NSIntegerMin;
 
@@ -372,7 +370,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return [self allEntitlementsUnknown];
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return [self allEntitlementsUnknown];
 
         // 提取 Entitlements 部分
@@ -440,7 +437,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return NO;
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return NO;
         return [content containsString:[NSString stringWithFormat:@"<key>%@</key>", entitlementKey]];
     } @catch (__unused NSException *e) {
@@ -454,7 +450,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return @[];
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return @[];
 
         // 企业签名无设备限制
@@ -500,7 +495,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return @"未检测到证书";
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return @"无法读取";
 
         if ([content containsString:@"<key>ProvisionsAllDevices</key>"]) {
@@ -519,7 +513,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return nil;
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return nil;
 
         NSRange teamRange = [content rangeOfString:@"<key>TeamName</key>"];
@@ -539,7 +532,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return nil;
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return nil;
 
         NSRange nameRange = [content rangeOfString:@"<key>Name</key>"];
@@ -559,7 +551,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return nil;
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return nil;
 
         // Entitlements 里的 application-identifier
@@ -580,7 +571,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return nil;
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return nil;
 
         NSRange crRange = [content rangeOfString:@"<key>CreationDate</key>"];
@@ -601,7 +591,6 @@ static NSString *sCachedProfileString = nil;
     @try {
         NSString *content = [self profileContent];
         if (!content) return NO;
-        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
         if (!content) return NO;
 
         // 企业签名不限制 UDID
