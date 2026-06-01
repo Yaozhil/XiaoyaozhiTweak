@@ -6,7 +6,6 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
-#import <objc/message.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -14,7 +13,6 @@ extern UIImage *YZEmbeddedDonationImage(void);
 extern UIImage *YZEmbeddedFollowIconImage(void);
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
-static NSString *const kYZAuthorWxid = @"wxid_t04guwoqziq221";
 static NSInteger const kYZDonationOverlayTag = 95101;
 static NSInteger const kYZDonationCardTag = 95102;
 static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
@@ -207,7 +205,8 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 - (UIView *)followIconViewWithFrame:(CGRect)frame {
     UIView *icon = [[UIView alloc] initWithFrame:frame];
     icon.backgroundColor = UIColor.clearColor;
-    icon.clipsToBounds = NO;
+    icon.layer.cornerRadius = 8;
+    icon.clipsToBounds = YES;
 
     UIImage *customIcon = YZEmbeddedFollowIconImage();
     if (!customIcon) {
@@ -224,9 +223,8 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     if (customIcon) {
         UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
         imageView.image = customIcon;
-        imageView.contentMode = UIViewContentModeScaleAspectFit;
+        imageView.contentMode = UIViewContentModeScaleAspectFill;
         imageView.backgroundColor = UIColor.clearColor;
-        imageView.layer.cornerRadius = frame.size.width / 2.0;
         imageView.clipsToBounds = YES;
         [icon addSubview:imageView];
         return icon;
@@ -238,9 +236,6 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
         UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
         imageView.image = followIcon;
         imageView.contentMode = UIViewContentModeScaleAspectFill;
-        imageView.layer.cornerRadius = 8;
-        imageView.layer.borderWidth = 0.5;
-        imageView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.88].CGColor;
         imageView.clipsToBounds = YES;
         [icon addSubview:imageView];
     } else {
@@ -784,8 +779,8 @@ static NSDictionary *sEntitlementsCache = nil;
     [overlay addGestureRecognizer:tap];
 
     CGFloat width = MIN(self.view.bounds.size.width - 48, 330);
-    CGFloat imageSize = width - 44;
-    CGFloat cardHeight = imageSize + 114;
+    CGFloat imageSize = MIN(width - 56, 252);
+    CGFloat cardHeight = imageSize + 164;
     UIView *card = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - width) / 2.0,
                                                             (self.view.bounds.size.height - cardHeight) / 2.0,
                                                             width,
@@ -800,14 +795,21 @@ static NSDictionary *sEntitlementsCache = nil;
     card.clipsToBounds = NO;
     [overlay addSubview:card];
 
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, width, 24)];
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0, 22, width, 24)];
     title.text = @"投喂一下";
     title.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
     title.textAlignment = NSTextAlignmentCenter;
     title.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [card addSubview:title];
 
-    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(22, 58, imageSize, imageSize)];
+    UILabel *recipient = [[UILabel alloc] initWithFrame:CGRectMake(24, 52, width - 48, 22)];
+    recipient.text = @"赞赏对象：杏杏";
+    recipient.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    recipient.textAlignment = NSTextAlignmentCenter;
+    recipient.textColor = [UIColor colorWithRed:0.78 green:0.56 blue:0.12 alpha:1.0];
+    [card addSubview:recipient];
+
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake((width - imageSize) / 2.0, 84, imageSize, imageSize)];
     imageView.image = donationImage;
     imageView.contentMode = UIViewContentModeScaleAspectFit;
     imageView.backgroundColor = UIColor.whiteColor;
@@ -815,7 +817,7 @@ static NSDictionary *sEntitlementsCache = nil;
     imageView.clipsToBounds = YES;
     [card addSubview:imageView];
 
-    UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 44, width - 40, 20)];
+    UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 50, width - 40, 20)];
     subtitle.text = @"感谢支持小杳知～";
     subtitle.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
     subtitle.textAlignment = NSTextAlignmentCenter;
@@ -952,47 +954,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)showRewardSheet {
-    Class rewardVCClass = NSClassFromString(@"WCPayQRCodeRewardPayerDetailViewController");
-    if (!rewardVCClass) {
-        [self showToast:@"当前微信版本不支持打赏功能"];
-        return;
-    }
-
-    @try {
-        id rewardVC = ((id (*)(id, SEL))objc_msgSend)([rewardVCClass alloc], @selector(init));
-        if (!rewardVC || ![rewardVC isKindOfClass:UIViewController.class]) {
-            [self showToast:@"无法打开打赏页"];
-            return;
-        }
-
-        // 安全设置 KVC：逐一检查 setter 是否存在
-        NSDictionary *kvPairs = @{
-            @"fromPluginSponsorPage": @YES,
-            @"pluginReward": @YES,
-            @"wxid": kYZAuthorWxid,
-        };
-        for (NSString *key in kvPairs) {
-            NSString *selName = [NSString stringWithFormat:@"set%@%@:",
-                                 [[key substringToIndex:1] uppercaseString],
-                                 [key substringFromIndex:1]];
-            SEL setter = NSSelectorFromString(selName);
-            if ([rewardVC respondsToSelector:setter]) {
-                [rewardVC setValue:kvPairs[key] forKey:key];
-            }
-        }
-
-        UIViewController *topVC = self;
-        while (topVC.presentedViewController) topVC = topVC.presentedViewController;
-        UINavigationController *nav = topVC.navigationController;
-        if (nav) {
-            [nav pushViewController:rewardVC animated:YES];
-        } else {
-            [self showToast:@"无法打开打赏页"];
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"[小杳知] 打赏页异常: %@", exception);
-        [self showToast:@"打赏功能暂不可用"];
-    }
+    [self showDonationSheet];
 }
 
 - (void)handleFollowTap {
@@ -1002,7 +964,7 @@ static NSDictionary *sEntitlementsCache = nil;
     }
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"关注公众号"
-                                                                   message:@"杳知爱吃米饭\n\n\n点击关注即可收到最新推送"
+                                                                   message:@"\n杳知爱吃米饭\n\n点击关注即可收到最新推送"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"关注" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
