@@ -25,6 +25,9 @@
 /// 获取当前登录用户的微信头像（UIImage）
 + (UIImage *)getSelfAvatar;
 
+/// 后台刷新当前登录用户头像
++ (void)fetchSelfAvatarWithCompletion:(void(^)(UIImage *avatar))completion;
+
 /// 获取当前登录用户的昵称
 + (NSString *)getSelfNickname;
 

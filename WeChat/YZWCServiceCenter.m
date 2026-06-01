@@ -2,10 +2,125 @@
 #import "YZWCRuntime.h"
 #import "YZCrashGuard.h"
 #import <UIKit/UIKit.h>
+#import <objc/message.h>
 #import <sys/sysctl.h>
 
 static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
+static UIImage *sCachedSelfAvatar = nil;
+
+static UIImage *YZImageFromAvatarObject(id object) {
+    if (!object || object == (id)kCFNull) return nil;
+    if ([object isKindOfClass:UIImage.class]) return object;
+    if ([object isKindOfClass:NSData.class]) return [UIImage imageWithData:object];
+    if ([object isKindOfClass:NSString.class]) {
+        NSString *value = (NSString *)object;
+        if (value.length == 0) return nil;
+        if ([value hasPrefix:@"http://"] || [value hasPrefix:@"https://"]) return nil;
+        return [UIImage imageWithContentsOfFile:value];
+    }
+    return nil;
+}
+
+static id YZCallNoArgSelector(id target, NSString *selectorName) {
+    if (!target || selectorName.length == 0) return nil;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![target respondsToSelector:selector]) return nil;
+
+    @try {
+        return ((id (*)(id, SEL))objc_msgSend)(target, selector);
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+}
+
+static id YZCallOneArgSelector(id target, NSString *selectorName, id argument) {
+    if (!target || selectorName.length == 0 || !argument) return nil;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![target respondsToSelector:selector]) return nil;
+
+    @try {
+        return ((id (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+}
+
+static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
+    for (NSString *selectorName in selectorNames) {
+        id value = YZCallNoArgSelector(target, selectorName);
+        if ([value isKindOfClass:NSString.class] && [(NSString *)value length] > 0) return value;
+    }
+    return nil;
+}
+
+static UIImage *YZDownloadAvatarImage(NSString *urlString) {
+    if (urlString.length == 0 || NSThread.isMainThread) return nil;
+
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return nil;
+
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url
+                                                            cachePolicy:NSURLRequestReturnCacheDataElseLoad
+                                                        timeoutInterval:6.0];
+    request.HTTPShouldHandleCookies = YES;
+
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    __block NSData *imageData = nil;
+    NSURLSessionDataTask *task = [NSURLSession.sharedSession dataTaskWithRequest:request
+                                                               completionHandler:^(NSData *data, __unused NSURLResponse *response, __unused NSError *error) {
+        if (data.length > 0) imageData = data;
+        dispatch_semaphore_signal(semaphore);
+    }];
+    [task resume];
+
+    long result = dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(7.0 * NSEC_PER_SEC)));
+    if (result != 0) {
+        [task cancel];
+        return nil;
+    }
+
+    return imageData.length > 0 ? [UIImage imageWithData:imageData] : nil;
+}
+
+static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
+    if (userName.length == 0) return nil;
+
+    NSArray<NSString *> *managerClassNames = @[
+        @"MMHeadImageMgr",
+        @"CHeadImgMgr",
+        @"CHeadImageMgr",
+        @"MMAvatarMgr"
+    ];
+    NSArray<NSString *> *imageSelectors = @[
+        @"getHDHeadImg:",
+        @"getHeadImg:",
+        @"getHeadImage:",
+        @"getHeadImageWithUsrName:",
+        @"getUsrHeadImg:",
+        @"getAvatarImage:",
+        @"getHeadImageByUsrName:",
+        @"getHeadImageForUserName:",
+        @"imageForUserName:"
+    ];
+
+    for (NSString *className in managerClassNames) {
+        Class managerClass = NSClassFromString(className);
+        if (!managerClass) continue;
+
+        id manager = [YZWCRuntime getService:className];
+        if (!manager) manager = YZCallNoArgSelector(managerClass, @"sharedInstance");
+        if (!manager) manager = YZCallNoArgSelector(managerClass, @"defaultManager");
+        if (!manager) continue;
+
+        for (NSString *selectorName in imageSelectors) {
+            UIImage *image = YZImageFromAvatarObject(YZCallOneArgSelector(manager, selectorName, userName));
+            if (image) return image;
+        }
+    }
+
+    return nil;
+}
 
 @implementation YZWCServiceCenter
 
@@ -123,7 +238,8 @@ static NSString *sCachedProfileString = nil;
 
 + (UIImage *)getSelfAvatar {
     @try {
-        // 方式1: 从 selfContact 获取头像
+        if (sCachedSelfAvatar) return sCachedSelfAvatar;
+
         id contactMgr = [self getContactManager];
         if (!contactMgr) return nil;
 
@@ -133,45 +249,78 @@ static NSString *sCachedProfileString = nil;
         id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, selfSel);
         if (!selfContact) return nil;
 
-        // 尝试获取头像 URL
-        SEL headImgSel = NSSelectorFromString(@"m_nsHeadImgUrl");
-        NSString *headImgUrl = nil;
-        if ([selfContact respondsToSelector:headImgSel]) {
-            headImgUrl = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, headImgSel);
-        }
-
-        // 尝试获取高清头像 URL
-        if (!headImgUrl || headImgUrl.length == 0) {
-            SEL hdHeadImgSel = NSSelectorFromString(@"m_nsHeadHDImgUrl");
-            if ([selfContact respondsToSelector:hdHeadImgSel]) {
-                headImgUrl = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, hdHeadImgSel);
+        NSArray<NSString *> *contactAvatarSelectors = @[
+            @"getHeadImg",
+            @"headImage",
+            @"m_headImage",
+            @"m_imgHead",
+            @"m_imageHead",
+            @"avatarImage"
+        ];
+        for (NSString *selectorName in contactAvatarSelectors) {
+            UIImage *image = YZImageFromAvatarObject(YZCallNoArgSelector(selfContact, selectorName));
+            if (image) {
+                sCachedSelfAvatar = image;
+                return image;
             }
         }
 
-        // 方式2: 从微信头像缓存目录读取
         NSString *userName = [self getCurrentUserName];
+        UIImage *managerImage = YZAvatarFromWeChatImageManagers(userName);
+        if (managerImage) {
+            sCachedSelfAvatar = managerImage;
+            return managerImage;
+        }
+
+        NSString *headImgUrl = YZStringFromSelectors(selfContact, @[
+            @"m_nsHeadHDImgUrl",
+            @"m_nsHeadImgUrl",
+            @"m_nsHeadHDUrl",
+            @"headHDImgUrl",
+            @"headImgUrl"
+        ]);
+
         if (userName.length > 0) {
-            NSString *cacheDir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/HeadImage"];
-            NSArray *possiblePaths = @[
-                [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.jpg", userName]],
-                [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_hd.jpg", userName]],
-                [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", userName]],
+            NSArray<NSString *> *cacheRoots = @[
+                [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/HeadImage"],
+                [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/HeadImg"],
+                [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/com.tencent.xin/HeadImage"],
+                [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/HeadImage"]
+            ];
+            NSArray<NSString *> *names = @[
+                [NSString stringWithFormat:@"%@.jpg", userName],
+                [NSString stringWithFormat:@"%@_hd.jpg", userName],
+                [NSString stringWithFormat:@"%@.png", userName],
+                [NSString stringWithFormat:@"%@.pic", userName]
             ];
 
-            for (NSString *path in possiblePaths) {
-                UIImage *cached = [UIImage imageWithContentsOfFile:path];
-                if (cached) return cached;
+            for (NSString *root in cacheRoots) {
+                for (NSString *name in names) {
+                    UIImage *cached = [UIImage imageWithContentsOfFile:[root stringByAppendingPathComponent:name]];
+                    if (cached) {
+                        sCachedSelfAvatar = cached;
+                        return cached;
+                    }
+                }
             }
         }
 
-        // 方式3: 如果拿到了头像 URL，尝试从网络异步加载（同步阻塞不可取，返回 nil 用默认图标）
-        // 实际项目中可以在后台下载后缓存到 YZMemoryCache
-
-        return nil;
+        UIImage *downloaded = YZDownloadAvatarImage(headImgUrl);
+        if (downloaded) sCachedSelfAvatar = downloaded;
+        return downloaded;
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"getSelfAvatar"];
         return nil;
     }
+}
+
++ (void)fetchSelfAvatarWithCompletion:(void(^)(UIImage *avatar))completion {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        UIImage *avatar = [self getSelfAvatar];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(avatar);
+        });
+    });
 }
 
 + (NSString *)getSelfNickname {
@@ -234,18 +383,56 @@ static NSString *sCachedProfileString = nil;
 
 #pragma mark - System & App Info
 
-+ (NSString *)getDeviceModel {
++ (NSString *)deviceModelNameForIdentifier:(NSString *)identifier {
+    if (identifier.length == 0) return nil;
+
+    static NSDictionary<NSString *, NSString *> *modelMap;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        modelMap = @{
+            @"iPhone10,3": @"iPhone X", @"iPhone10,6": @"iPhone X",
+            @"iPhone11,2": @"iPhone XS", @"iPhone11,4": @"iPhone XS Max", @"iPhone11,6": @"iPhone XS Max", @"iPhone11,8": @"iPhone XR",
+            @"iPhone12,1": @"iPhone 11", @"iPhone12,3": @"iPhone 11 Pro", @"iPhone12,5": @"iPhone 11 Pro Max", @"iPhone12,8": @"iPhone SE (2nd generation)",
+            @"iPhone13,1": @"iPhone 12 mini", @"iPhone13,2": @"iPhone 12", @"iPhone13,3": @"iPhone 12 Pro", @"iPhone13,4": @"iPhone 12 Pro Max",
+            @"iPhone14,4": @"iPhone 13 mini", @"iPhone14,5": @"iPhone 13", @"iPhone14,2": @"iPhone 13 Pro", @"iPhone14,3": @"iPhone 13 Pro Max", @"iPhone14,6": @"iPhone SE (3rd generation)",
+            @"iPhone14,7": @"iPhone 14", @"iPhone14,8": @"iPhone 14 Plus", @"iPhone15,2": @"iPhone 14 Pro", @"iPhone15,3": @"iPhone 14 Pro Max",
+            @"iPhone15,4": @"iPhone 15", @"iPhone15,5": @"iPhone 15 Plus", @"iPhone16,1": @"iPhone 15 Pro", @"iPhone16,2": @"iPhone 15 Pro Max",
+            @"iPhone17,3": @"iPhone 16", @"iPhone17,4": @"iPhone 16 Plus", @"iPhone17,1": @"iPhone 16 Pro", @"iPhone17,2": @"iPhone 16 Pro Max", @"iPhone17,5": @"iPhone 16e"
+        };
+    });
+
+    return modelMap[identifier];
+}
+
++ (NSString *)genericDeviceModelNameForIdentifier:(NSString *)identifier {
+    if ([identifier hasPrefix:@"iPhone"]) return @"iPhone";
+    if ([identifier hasPrefix:@"iPad"]) return @"iPad";
+    if ([identifier hasPrefix:@"iPod"]) return @"iPod touch";
+    return nil;
+}
+
++ (NSString *)getMachineIdentifier {
     @try {
-        size_t size;
+        size_t size = 0;
         sysctlbyname("hw.machine", NULL, &size, NULL, 0);
+        if (size == 0) return nil;
+
         char *machine = malloc(size);
+        if (!machine) return nil;
         sysctlbyname("hw.machine", machine, &size, NULL, 0);
-        NSString *model = [NSString stringWithUTF8String:machine];
+        NSString *identifier = [NSString stringWithUTF8String:machine];
         free(machine);
-        return model ?: @"未知";
+        return identifier;
     } @catch (__unused NSException *e) {
-        return @"未知";
+        return nil;
     }
+}
+
++ (NSString *)getDeviceModel {
+    NSString *identifier = [self getMachineIdentifier];
+    NSString *name = [self deviceModelNameForIdentifier:identifier] ?: [self genericDeviceModelNameForIdentifier:identifier];
+    if (name.length > 0 && identifier.length > 0) return [NSString stringWithFormat:@"%@ (%@)", name, identifier];
+    return identifier ?: @"未知";
 }
 
 + (NSString *)getSystemVersion {

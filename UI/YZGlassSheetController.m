@@ -47,6 +47,7 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:1.0]; // #F2F2F7
     [self buildMainUI];
+    [self refreshAvatar];
     [self refreshFollowStatus];
 }
 
@@ -182,9 +183,6 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarView.backgroundColor = [UIColor colorWithRed:0.86 green:0.93 blue:1.0 alpha:1.0];
 
-    // 加载头像
-    UIImage *avatar = self.appIcon ?: [YZWCServiceCenter getSelfAvatar];
-    if (avatar) self.avatarView.image = avatar;
     [self.avatarShell addSubview:self.avatarView];
 
     // 名称
@@ -585,8 +583,18 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)refreshAvatar {
-    UIImage *av = self.appIcon ?: [YZWCServiceCenter getSelfAvatar];
-    if (av && self.avatarView) self.avatarView.image = av;
+    UIImage *localAvatar = self.appIcon ?: [YZWCServiceCenter getSelfAvatar];
+    if (localAvatar && self.avatarView) {
+        self.avatarView.image = localAvatar;
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+    [YZWCServiceCenter fetchSelfAvatarWithCompletion:^(UIImage *avatar) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || !avatar) return;
+        strongSelf.avatarView.image = avatar;
+    }];
 }
 
 @end
