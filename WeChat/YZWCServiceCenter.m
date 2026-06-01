@@ -93,6 +93,7 @@ static NSString *sCachedProfileString = nil;
             [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:scene:")],
             [NSValue valueWithPointer:NSSelectorFromString(@"addBrandContact:scene:enterType:")],
             [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:scene:enterType:")],
+            [NSValue valueWithPointer:NSSelectorFromString(@"addContact:scene:")],
             [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:")],
         ];
 

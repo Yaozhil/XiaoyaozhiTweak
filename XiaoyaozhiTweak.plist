@@ -10,8 +10,6 @@
             <string>com.tencent.qy.xin</string>
             <string>com.tencent.wx</string>
         </array>
-        <key>CoreFoundationVersion</key>
-        <integer>1600</integer>
     </dict>
 </dict>
 </plist>

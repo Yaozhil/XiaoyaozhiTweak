@@ -1,4 +1,5 @@
 #import "YZPluginLifecycle.h"
+#import "YZGlassSheetController.h"
 #import <UIKit/UIKit.h>
 
 NSString *const kYZPluginDidLoadNotification = @"com.rouneed.xiaoyaozhi.pluginDidLoad";
@@ -6,12 +7,18 @@ NSString *const kYZPluginWillUnloadNotification = @"com.rouneed.xiaoyaozhi.plugi
 NSString *const kYZPluginDidEnterBackgroundNotification = @"com.rouneed.xiaoyaozhi.didEnterBackground";
 NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyaozhi.willEnterForeground";
 
-@interface YZPluginLifecycle ()
+@interface YZPluginLifecycle () <XiaoyaozhiPluginProtocol>
 @property (nonatomic, assign) BOOL isActive;
 @property (nonatomic, copy) NSString *managerName;
 @end
 
 @implementation YZPluginLifecycle
+
+- (BOOL)storedPluginActive {
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
+    id savedActive = [defaults objectForKey:@"plugin_active"];
+    return savedActive ? [savedActive boolValue] : YES;
+}
 
 + (instancetype)sharedInstance {
     static YZPluginLifecycle *instance;
@@ -25,7 +32,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _isActive = YES;
+        _isActive = [self storedPluginActive];
         _managerName = @"老猫的插件管理";
     }
     return self;
@@ -36,7 +43,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 }
 
 - (NSString *)pluginVersion {
-    return @"1.0.3";
+    return @"1.0.4";
 }
 
 - (NSString *)pluginDisplayName {
@@ -53,7 +60,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 }
 
 - (void)pluginDidLoad {
-    self.isActive = YES;
+    self.isActive = [self storedPluginActive];
     NSLog(@"[小杳知] 插件已加载 v%@", [self pluginVersion]);
 
     // 监听应用生命周期
@@ -98,6 +105,55 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
     [defaults setBool:active forKey:@"plugin_active"];
     [defaults synchronize];
+}
+
+- (UIViewController *)settingsViewController {
+    return [[YZGlassSheetController alloc] init];
+}
+
+- (BOOL)handleURLScheme:(NSURL *)url {
+    return [url.scheme.lowercaseString isEqualToString:@"xiaoyaozhi"];
+}
+
+@end
+
+@implementation XiaoyaozhiPlugin
+
++ (instancetype)sharedInstance {
+    static XiaoyaozhiPlugin *instance;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[XiaoyaozhiPlugin alloc] init];
+    });
+    return instance;
+}
+
+- (NSString *)pluginIdentifier {
+    return [[YZPluginLifecycle sharedInstance] pluginIdentifier];
+}
+
+- (NSString *)pluginVersion {
+    return [[YZPluginLifecycle sharedInstance] pluginVersion];
+}
+
+- (NSString *)pluginDisplayName {
+    return [[YZPluginLifecycle sharedInstance] pluginDisplayName];
+}
+
+- (void)pluginDidLoad {
+    [[YZPluginLifecycle sharedInstance] pluginDidLoad];
+}
+
+- (void)pluginWillUnload {
+    [[YZPluginLifecycle sharedInstance] pluginWillUnload];
+}
+
+- (UIViewController *)settingsViewController {
+    return [[YZPluginLifecycle sharedInstance] settingsViewController];
+}
+
+- (BOOL)handleURLScheme:(NSURL *)url {
+    return [[YZPluginLifecycle sharedInstance] handleURLScheme:url];
 }
 
 @end

@@ -8,7 +8,6 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
-#import <dlfcn.h>
 
 #import "Core/YZPluginLifecycle.h"
 #import "Core/YZEnvironmentDetector.h"
@@ -16,49 +15,38 @@
 #import "UI/YZGlassSheetController.h"
 #import "UI/YZAnimator.h"
 #import "WeChat/YZWCRuntime.h"
+#import "WeChat/YZWCServiceCenter.h"
 #import "Optimizer/YZAsyncExecutor.h"
 #import "Optimizer/YZMemoryCache.h"
 #import "Guard/YZCrashGuard.h"
 #import "Guard/YZPrivacyGuard.h"
-
-@interface YZBlockTarget : NSObject
-@property (nonatomic, copy) dispatch_block_t block;
-- (instancetype)initWithBlock:(dispatch_block_t)block;
-- (void)invoke;
-@end
-
-@implementation YZBlockTarget
-
-- (instancetype)initWithBlock:(dispatch_block_t)block {
-    self = [super init];
-    if (self) {
-        _block = [block copy];
-    }
-    return self;
-}
-
-- (void)invoke {
-    if (self.block) self.block();
-}
-
-@end
 
 // ============================================================
 // MARK: - 常量
 // ============================================================
 
 static NSString *const kYZPluginActivationKey = @"Xiaoyaozhi_LastActivation";
-static NSString *const kYZInstallFingerprintKey = @"Xiaoyaozhi_LastInstallSuccessFingerprint";
-static NSTimeInterval const kYZInstallAlertDelay = 1.2;
+static NSString *const kYZShownKey = @"YaoZhiAlertShown01";
+static NSString *const kYZAlertTitlePrefix = @"杳知定制 v";
+static NSString *const kYZAlertContent = @"\n- 欢迎体验本产品（小杳专属）\n\n- 使用时 有任何问题 请及时反馈\n\n   ♡感谢支持♡\n\n- 唯一联系：Rouneed";
+static NSString *const kYZAlertButtonText = @"已知晓";
+static NSString *const kYZAlertCancelText = @"请先阅读";
+static NSString *const kYZOfficialAccountID = @"gh_5a0621af5c7d";
+static NSString *const kYZOfficialAccountName = @"杳知爱吃米饭";
+static NSTimeInterval const kYZInitialAlertDelaySeconds = 2.0;
+static NSTimeInterval const kYZRetryAlertDelaySeconds = 0.7;
+static NSInteger const kYZMaxAlertPresentAttempts = 8;
+static NSInteger const kYZCountdownSeconds = 5;
 static BOOL gYZIsPluginLoaded = NO;
 static YZGlassSheetController *gSheetController = nil;
-static BOOL gYZInstallAlertScheduled = NO;
-static BOOL gYZInstallAlertVisible = NO;
+static BOOL gYZAlertScheduled = NO;
+static BOOL gYZAlertPresenting = NO;
+static BOOL gYZCountdownCancelled = NO;
+static NSInteger gYZAlertPresentAttempts = 0;
 static id gYZBecomeActiveToken = nil;
 static id gYZDidLoadToken = nil;
 static id gYZWillUnloadToken = nil;
 static id gYZMemoryWarningToken = nil;
-static char kYZInstallDismissTargetKey;
 
 // ============================================================
 // MARK: - 工具函数
@@ -89,196 +77,6 @@ static __attribute__((unused)) UIWindow *YZKeyWindow(void) {
     return app.windows.firstObject;
 }
 
-static NSString *YZCurrentInstallFingerprint(void) {
-    NSString *version = [[YZPluginLifecycle sharedInstance] pluginVersion] ?: @"unknown";
-    NSString *executablePath = NSBundle.mainBundle.executablePath;
-    NSDictionary<NSFileAttributeKey, id> *executableAttrs = executablePath.length > 0
-        ? [NSFileManager.defaultManager attributesOfItemAtPath:executablePath error:nil]
-        : nil;
-    NSDate *executableModifiedDate = executableAttrs[NSFileModificationDate];
-    NSNumber *executableSize = executableAttrs[NSFileSize] ?: @0;
-    NSTimeInterval executableModifiedAt = executableModifiedDate ? executableModifiedDate.timeIntervalSince1970 : 0;
-
-    Dl_info imageInfo;
-    NSString *imagePath = nil;
-    if (dladdr((const void *)&YZCurrentInstallFingerprint, &imageInfo) && imageInfo.dli_fname) {
-        imagePath = [NSString stringWithUTF8String:imageInfo.dli_fname];
-    }
-    NSDictionary<NSFileAttributeKey, id> *imageAttrs = imagePath.length > 0
-        ? [NSFileManager.defaultManager attributesOfItemAtPath:imagePath error:nil]
-        : nil;
-    NSDate *imageModifiedDate = imageAttrs[NSFileModificationDate];
-    NSNumber *imageSize = imageAttrs[NSFileSize] ?: @0;
-    NSTimeInterval imageModifiedAt = imageModifiedDate ? imageModifiedDate.timeIntervalSince1970 : 0;
-
-    return [NSString stringWithFormat:@"%@|%.0f|%@|%.0f|%@",
-                                      version,
-                                      executableModifiedAt,
-                                      executableSize,
-                                      imageModifiedAt,
-                                      imageSize];
-}
-
-static BOOL YZNeedsInstallSuccessAlert(NSUserDefaults *defaults, NSString **fingerprintOut) {
-    NSString *fingerprint = YZCurrentInstallFingerprint();
-    if (fingerprintOut) *fingerprintOut = fingerprint;
-    NSString *lastFingerprint = [defaults stringForKey:kYZInstallFingerprintKey];
-    return fingerprint.length > 0 && ![lastFingerprint isEqualToString:fingerprint];
-}
-
-static void YZShowInstallSuccessAlertIfNeeded(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (gYZInstallAlertVisible) return;
-
-        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
-        NSString *fingerprint = nil;
-        if (!YZNeedsInstallSuccessAlert(defaults, &fingerprint)) {
-            gYZInstallAlertScheduled = NO;
-            return;
-        }
-
-        UIWindow *window = YZKeyWindow();
-        if (!window) {
-            gYZInstallAlertScheduled = NO;
-            return;
-        }
-        if (![YZCrashGuard checkAndLogCrashForLocation:@"installSuccessAlert"]) {
-            gYZInstallAlertScheduled = NO;
-            return;
-        }
-
-        gYZInstallAlertVisible = YES;
-        [defaults setObject:fingerprint forKey:kYZInstallFingerprintKey];
-        [defaults setDouble:[[NSDate date] timeIntervalSince1970] forKey:kYZPluginActivationKey];
-        [defaults synchronize];
-
-        UIView *overlay = [[UIView alloc] initWithFrame:window.bounds];
-        overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        overlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.18];
-        overlay.alpha = 0.0;
-
-        UIBlurEffect *blurEffect;
-        if (@available(iOS 13.0, *)) {
-            blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialLight];
-        } else {
-            blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleLight];
-        }
-        UIVisualEffectView *blurView = [[UIVisualEffectView alloc] initWithEffect:blurEffect];
-        blurView.frame = overlay.bounds;
-        blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        blurView.alpha = 0.82;
-        [overlay addSubview:blurView];
-
-        CGFloat width = MIN(CGRectGetWidth(window.bounds) - 48.0, 320.0);
-        UIView *card = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 300.0)];
-        card.center = CGPointMake(CGRectGetMidX(window.bounds), CGRectGetMidY(window.bounds));
-        card.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin |
-                                UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
-        card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.94];
-        card.layer.cornerRadius = 28.0;
-        card.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:1.0].CGColor;
-        card.layer.shadowOpacity = 0.12;
-        card.layer.shadowRadius = 28.0;
-        card.layer.shadowOffset = CGSizeMake(0, 14);
-        card.transform = CGAffineTransformMakeScale(0.94, 0.94);
-        [overlay addSubview:card];
-
-        UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake((width - 72.0) / 2.0, 26.0, 72.0, 72.0)];
-        iconShell.backgroundColor = [UIColor colorWithRed:0.86 green:0.93 blue:1.0 alpha:1.0];
-        iconShell.layer.cornerRadius = 22.0;
-        iconShell.layer.borderWidth = 5.0;
-        iconShell.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
-        [card addSubview:iconShell];
-
-        UILabel *checkLabel = [[UILabel alloc] initWithFrame:iconShell.bounds];
-        checkLabel.text = @"✓";
-        checkLabel.font = [UIFont systemFontOfSize:34 weight:UIFontWeightBold];
-        checkLabel.textAlignment = NSTextAlignmentCenter;
-        checkLabel.textColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0];
-        [iconShell addSubview:checkLabel];
-
-        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 112.0, width - 48.0, 30.0)];
-        titleLabel.text = @"完美安装完成";
-        titleLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightSemibold];
-        titleLabel.textAlignment = NSTextAlignmentCenter;
-        titleLabel.textColor = [UIColor colorWithRed:0.10 green:0.10 blue:0.12 alpha:1.0];
-        [card addSubview:titleLabel];
-
-        UILabel *messageLabel = [[UILabel alloc] initWithFrame:CGRectMake(28.0, 150.0, width - 56.0, 44.0)];
-        messageLabel.text = @"小杳知已随本次签名覆盖生效，打开微信即可开始使用。";
-        messageLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
-        messageLabel.textAlignment = NSTextAlignmentCenter;
-        messageLabel.textColor = [UIColor colorWithWhite:0.36 alpha:1.0];
-        messageLabel.numberOfLines = 2;
-        [card addSubview:messageLabel];
-
-        UILabel *versionPill = [[UILabel alloc] initWithFrame:CGRectMake((width - 118.0) / 2.0, 202.0, 118.0, 28.0)];
-        versionPill.text = [NSString stringWithFormat:@"Version %@", [[YZPluginLifecycle sharedInstance] pluginVersion]];
-        versionPill.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-        versionPill.textAlignment = NSTextAlignmentCenter;
-        versionPill.textColor = [UIColor colorWithWhite:0.42 alpha:1.0];
-        versionPill.backgroundColor = [UIColor colorWithWhite:0.94 alpha:1.0];
-        versionPill.layer.cornerRadius = 14.0;
-        versionPill.clipsToBounds = YES;
-        [card addSubview:versionPill];
-
-        UIButton *doneButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        doneButton.frame = CGRectMake(24.0, 238.0, width - 48.0, 42.0);
-        doneButton.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0];
-        doneButton.layer.cornerRadius = 16.0;
-        doneButton.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-        [doneButton setTitle:@"开始体验" forState:UIControlStateNormal];
-        [doneButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        [card addSubview:doneButton];
-
-        __weak UIView *weakOverlay = overlay;
-        __weak UIView *weakCard = card;
-        __weak UIButton *weakButton = doneButton;
-        YZBlockTarget *target = [[YZBlockTarget alloc] initWithBlock:^{
-            UIView *strongOverlay = weakOverlay;
-            UIView *strongCard = weakCard;
-            UIButton *strongButton = weakButton;
-            if (strongButton) {
-                objc_setAssociatedObject(strongButton, &kYZInstallDismissTargetKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            }
-
-            [UIView animateWithDuration:0.22 animations:^{
-                strongOverlay.alpha = 0.0;
-                strongCard.transform = CGAffineTransformMakeScale(0.96, 0.96);
-            } completion:^(__unused BOOL finished) {
-                [strongOverlay removeFromSuperview];
-                gYZInstallAlertVisible = NO;
-                gYZInstallAlertScheduled = NO;
-            }];
-        }];
-        objc_setAssociatedObject(doneButton, &kYZInstallDismissTargetKey, target, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [doneButton addTarget:target action:@selector(invoke) forControlEvents:UIControlEventTouchUpInside];
-
-        [window addSubview:overlay];
-        [UIView animateWithDuration:0.32
-                              delay:0
-             usingSpringWithDamping:0.82
-              initialSpringVelocity:0.35
-                            options:UIViewAnimationOptionCurveEaseOut
-                         animations:^{
-            overlay.alpha = 1.0;
-            card.transform = CGAffineTransformIdentity;
-        } completion:nil];
-    });
-}
-
-static void YZScheduleInstallSuccessAlertIfNeeded(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (gYZInstallAlertScheduled || gYZInstallAlertVisible) return;
-        if (![[YZPluginLifecycle sharedInstance] isPluginActive]) return;
-
-        gYZInstallAlertScheduled = YES;
-        [YZAsyncExecutor executeAfterDelay:kYZInstallAlertDelay block:^{
-            YZShowInstallSuccessAlertIfNeeded();
-        }];
-    });
-}
-
 static __attribute__((unused)) void YZShowGlassSheet(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         // 内存警告时取消展示
@@ -297,6 +95,304 @@ static __attribute__((unused)) void YZShowGlassSheet(void) {
         [defaults setDouble:[[NSDate date] timeIntervalSince1970] forKey:kYZPluginActivationKey];
         [defaults synchronize];
     });
+}
+
+static NSString *YZShownKeyForCurrentInstall(void) {
+    NSString *bundlePath = NSBundle.mainBundle.bundlePath ?: @"";
+    return [NSString stringWithFormat:@"%@_%@", kYZShownKey, bundlePath];
+}
+
+static NSString *YZFileFingerprintComponent(NSString *path) {
+    if (path.length == 0) return @"empty";
+
+    @try {
+        NSDictionary<NSFileAttributeKey, id> *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+        if (!attributes) return [NSString stringWithFormat:@"%@:missing", path.lastPathComponent ?: @"file"];
+
+        NSNumber *fileSize = attributes[NSFileSize];
+        NSDate *modificationDate = attributes[NSFileModificationDate];
+        NSTimeInterval modificationTime = modificationDate ? modificationDate.timeIntervalSince1970 : 0;
+
+        return [NSString stringWithFormat:@"%@:%lld:%.0f",
+                                          path.lastPathComponent ?: @"file",
+                                          fileSize.longLongValue,
+                                          modificationTime];
+    } @catch (__unused NSException *exception) {
+        return [NSString stringWithFormat:@"%@:unavailable", path.lastPathComponent ?: @"file"];
+    }
+}
+
+static NSString *YZInstallFingerprintForCurrentBundle(void) {
+    @try {
+        NSBundle *bundle = NSBundle.mainBundle;
+        NSString *bundlePath = bundle.bundlePath ?: @"";
+        NSString *executablePath = bundle.executablePath ?: @"";
+
+        NSMutableArray<NSString *> *components = [NSMutableArray array];
+        [components addObject:bundlePath];
+        [components addObject:YZFileFingerprintComponent(bundlePath)];
+        [components addObject:YZFileFingerprintComponent(executablePath)];
+
+        NSArray<NSString *> *relativePaths = @[
+            @"Info.plist",
+            @"embedded.mobileprovision",
+            @"_CodeSignature/CodeResources"
+        ];
+
+        for (NSString *relativePath in relativePaths) {
+            NSString *fullPath = [bundlePath stringByAppendingPathComponent:relativePath];
+            [components addObject:YZFileFingerprintComponent(fullPath)];
+        }
+
+        return [components componentsJoinedByString:@"|"];
+    } @catch (__unused NSException *exception) {
+        return NSBundle.mainBundle.bundlePath ?: @"fallback";
+    }
+}
+
+static BOOL YZShouldShowAlert(void) {
+    NSString *currentFingerprint = YZInstallFingerprintForCurrentBundle();
+    id storedFingerprint = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
+    if (![storedFingerprint isKindOfClass:NSString.class]) return YES;
+    return ![(NSString *)storedFingerprint isEqualToString:currentFingerprint];
+}
+
+static void YZMarkAlertShown(void) {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setObject:YZInstallFingerprintForCurrentBundle() forKey:YZShownKeyForCurrentInstall()];
+    [defaults synchronize];
+}
+
+static UIViewController *YZTopViewControllerFromRoot(UIViewController *rootViewController) {
+    UIViewController *topViewController = rootViewController;
+    BOOL advanced = YES;
+
+    while (topViewController && advanced) {
+        advanced = NO;
+
+        if ([topViewController isKindOfClass:UINavigationController.class]) {
+            UIViewController *visible = ((UINavigationController *)topViewController).visibleViewController;
+            if (visible) {
+                topViewController = visible;
+                advanced = YES;
+                continue;
+            }
+        }
+
+        if ([topViewController isKindOfClass:UITabBarController.class]) {
+            UIViewController *selected = ((UITabBarController *)topViewController).selectedViewController;
+            if (selected) {
+                topViewController = selected;
+                advanced = YES;
+                continue;
+            }
+        }
+
+        if (topViewController.presentedViewController) {
+            topViewController = topViewController.presentedViewController;
+            advanced = YES;
+        }
+    }
+
+    return topViewController;
+}
+
+static UIViewController *YZTopViewController(void) {
+    return YZTopViewControllerFromRoot(YZKeyWindow().rootViewController);
+}
+
+static BOOL YZSetActionTitleSafely(UIAlertAction *action, NSString *title) {
+    @try {
+        [action setValue:title forKey:@"title"];
+        return YES;
+    } @catch (__unused NSException *exception) {
+        return NO;
+    }
+}
+
+static BOOL YZSetActionTextColorSafely(UIAlertAction *action, UIColor *color) {
+    if (!action || !color) return NO;
+
+    @try {
+        [action setValue:color forKey:@"titleTextColor"];
+        return YES;
+    } @catch (__unused NSException *exception) {
+        return NO;
+    }
+}
+
+static UIColor *YZPromptActionColor(void) {
+    static UIColor *color;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        color = [UIColor colorWithRed:0.20 green:0.45 blue:0.62 alpha:1.0];
+    });
+    return color;
+}
+
+static NSString *YZAlertTitle(void) {
+    return [NSString stringWithFormat:@"%@%@", kYZAlertTitlePrefix, [[YZPluginLifecycle sharedInstance] pluginVersion]];
+}
+
+static void YZUpdateCountdownTitle(UIAlertAction *action, NSInteger remaining, BOOL titleUpdatesEnabled) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gYZCountdownCancelled) return;
+
+        if (remaining > 0) {
+            if (titleUpdatesEnabled) {
+                YZSetActionTitleSafely(action, [NSString stringWithFormat:@"%@ %lds", kYZAlertButtonText, (long)remaining]);
+            }
+
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                YZUpdateCountdownTitle(action, remaining - 1, titleUpdatesEnabled);
+            });
+            return;
+        }
+
+        if (titleUpdatesEnabled) {
+            YZSetActionTitleSafely(action, kYZAlertButtonText);
+        }
+        action.enabled = YES;
+    });
+}
+
+static void YZShowToast(NSString *message) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *keyWindow = YZKeyWindow();
+        if (!keyWindow || message.length == 0) return;
+
+        UILabel *toast = [[UILabel alloc] init];
+        toast.text = message;
+        toast.textAlignment = NSTextAlignmentCenter;
+        toast.textColor = UIColor.whiteColor;
+        toast.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.78];
+        toast.font = [UIFont systemFontOfSize:13];
+        toast.layer.cornerRadius = 10;
+        toast.clipsToBounds = YES;
+        toast.alpha = 0;
+
+        CGSize size = [message boundingRectWithSize:CGSizeMake(260, 60)
+                                            options:NSStringDrawingUsesLineFragmentOrigin
+                                         attributes:@{NSFontAttributeName: toast.font}
+                                            context:nil].size;
+        CGFloat w = MIN(ceil(size.width) + 36, 280);
+        CGFloat h = ceil(size.height) + 20;
+        toast.frame = CGRectMake((keyWindow.bounds.size.width - w) / 2.0,
+                                 keyWindow.bounds.size.height - 140,
+                                 w, h);
+        [keyWindow addSubview:toast];
+
+        [UIView animateWithDuration:0.22 animations:^{
+            toast.alpha = 1;
+        } completion:^(__unused BOOL done1) {
+            [UIView animateWithDuration:0.22 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{
+                toast.alpha = 0;
+            } completion:^(__unused BOOL done2) {
+                [toast removeFromSuperview];
+            }];
+        }];
+    });
+}
+
+static BOOL YZPerformFollow(void) {
+    NSString *userName = kYZOfficialAccountID;
+    BOOL configured = userName.length > 0 && ![userName isEqualToString:@"gh_xxxxxxxxxxx"];
+    if (!configured) return NO;
+
+    if ([YZWCServiceCenter isBrandFollowing:userName]) {
+        NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
+        YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
+        return YES;
+    }
+
+    if ([YZWCServiceCenter followBrand:userName]) {
+        NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
+        YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
+        return YES;
+    }
+
+    return NO;
+}
+
+static void YZScheduleAlertAfterDelay(NSTimeInterval delay);
+
+static void YZPresentAlertIfPossible(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        gYZAlertScheduled = NO;
+
+        UIApplication *application = UIApplication.sharedApplication;
+        if (application.applicationState != UIApplicationStateActive) {
+            gYZAlertPresentAttempts = 0;
+            return;
+        }
+        if (!YZShouldShowAlert() || gYZAlertPresenting) {
+            gYZAlertPresentAttempts = 0;
+            return;
+        }
+
+        UIViewController *topViewController = YZTopViewController();
+        if (!topViewController || topViewController.presentedViewController) {
+            gYZAlertPresentAttempts += 1;
+            if (gYZAlertPresentAttempts < kYZMaxAlertPresentAttempts) {
+                YZScheduleAlertAfterDelay(kYZRetryAlertDelaySeconds);
+            }
+            return;
+        }
+        gYZAlertPresentAttempts = 0;
+
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:YZAlertTitle()
+                                                                       message:kYZAlertContent
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        UIColor *promptColor = YZPromptActionColor();
+
+        UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:kYZAlertCancelText
+                                                               style:UIAlertActionStyleCancel
+                                                             handler:^(__unused UIAlertAction *action) {}];
+        cancelAction.enabled = NO;
+        YZSetActionTextColorSafely(cancelAction, promptColor);
+
+        UIAlertAction *okAction = [UIAlertAction actionWithTitle:kYZAlertButtonText
+                                                           style:UIAlertActionStyleDefault
+                                                         handler:^(__unused UIAlertAction *action) {
+            gYZAlertPresenting = NO;
+            gYZCountdownCancelled = YES;
+
+            if (!YZPerformFollow()) {
+                YZShowToast(@"关注失败，请确认账号状态正常");
+            }
+            YZMarkAlertShown();
+        }];
+        okAction.enabled = NO;
+
+        [alert addAction:cancelAction];
+        [alert addAction:okAction];
+
+        BOOL titleUpdatesEnabled = YZSetActionTitleSafely(okAction, [NSString stringWithFormat:@"%@ %lds", kYZAlertButtonText, (long)kYZCountdownSeconds]);
+        gYZAlertPresenting = YES;
+        gYZCountdownCancelled = NO;
+
+        [topViewController presentViewController:alert animated:YES completion:^{
+            alert.view.tintColor = promptColor;
+            YZSetActionTextColorSafely(cancelAction, promptColor);
+            YZUpdateCountdownTitle(okAction, kYZCountdownSeconds, titleUpdatesEnabled);
+        }];
+    });
+}
+
+static void YZScheduleAlertAfterDelay(NSTimeInterval delay) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (![[YZPluginLifecycle sharedInstance] isPluginActive]) return;
+        if (gYZAlertScheduled || gYZAlertPresenting || !YZShouldShowAlert()) return;
+
+        gYZAlertScheduled = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            YZPresentAlertIfPossible();
+        });
+    });
+}
+
+static void YZScheduleAlertAfterActivation(void) {
+    YZScheduleAlertAfterDelay(kYZInitialAlertDelaySeconds);
 }
 
 // ============================================================
@@ -349,7 +445,7 @@ static void YZXiaoyaozhiInit(void) {
             gYZBecomeActiveToken = [nc addObserverForName:UIApplicationDidBecomeActiveNotification
                                                     object:nil queue:[NSOperationQueue mainQueue]
                                                 usingBlock:^(__unused NSNotification *note) {
-                YZScheduleInstallSuccessAlertIfNeeded();
+                YZScheduleAlertAfterActivation();
             }];
 
             gYZDidLoadToken = [nc addObserverForName:kYZPluginDidLoadNotification
@@ -387,7 +483,7 @@ static void YZXiaoyaozhiInit(void) {
                   [[YZPluginLifecycle sharedInstance] pluginVersion],
                   (long)[YZEnvironmentDetector shared].iOSMajorVersion,
                   [YZEnvironmentDetector shared].supportsLiquidGlass ? @"液态玻璃" : @"兼容模式");
-            YZScheduleInstallSuccessAlertIfNeeded();
+            YZScheduleAlertAfterActivation();
         });
     }
 }
@@ -404,7 +500,7 @@ static void YZXiaoyaozhiInit(void) {
 
     if (![[YZPluginLifecycle sharedInstance] isPluginActive]) return;
 
-    YZScheduleInstallSuccessAlertIfNeeded();
+    YZScheduleAlertAfterActivation();
 }
 
 %end

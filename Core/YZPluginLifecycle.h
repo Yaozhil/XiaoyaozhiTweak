@@ -35,4 +35,13 @@ extern NSString *const kYZPluginWillEnterForegroundNotification;
 - (BOOL)isPluginActive;
 - (void)setPluginActive:(BOOL)active;
 
+- (UIViewController *)settingsViewController;
+- (BOOL)handleURLScheme:(NSURL *)url;
+
+@end
+
+@interface XiaoyaozhiPlugin : NSObject <XiaoyaozhiPluginProtocol>
+
+@property (class, nonatomic, readonly) XiaoyaozhiPlugin *sharedInstance;
+
 @end
