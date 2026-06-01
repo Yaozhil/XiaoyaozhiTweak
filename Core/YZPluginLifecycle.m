@@ -1,0 +1,103 @@
+#import "YZPluginLifecycle.h"
+#import <UIKit/UIKit.h>
+
+NSString *const kYZPluginDidLoadNotification = @"com.rouneed.xiaoyaozhi.pluginDidLoad";
+NSString *const kYZPluginWillUnloadNotification = @"com.rouneed.xiaoyaozhi.pluginWillUnload";
+NSString *const kYZPluginDidEnterBackgroundNotification = @"com.rouneed.xiaoyaozhi.didEnterBackground";
+NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyaozhi.willEnterForeground";
+
+@interface YZPluginLifecycle ()
+@property (nonatomic, assign) BOOL isActive;
+@property (nonatomic, copy) NSString *managerName;
+@end
+
+@implementation YZPluginLifecycle
+
++ (instancetype)sharedInstance {
+    static YZPluginLifecycle *instance;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[YZPluginLifecycle alloc] init];
+    });
+    return instance;
+}
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _isActive = YES;
+        _managerName = @"老猫的插件管理";
+    }
+    return self;
+}
+
+- (NSString *)pluginIdentifier {
+    return @"com.rouneed.xiaoyaozhi";
+}
+
+- (NSString *)pluginVersion {
+    return @"1.0.2";
+}
+
+- (NSString *)pluginDisplayName {
+    return @"小杳知";
+}
+
+- (void)registerWithManager:(NSString *)managerName {
+    self.managerName = managerName ?: @"老猫的插件管理";
+    NSLog(@"[小杳知] 已注册到 %@", self.managerName);
+
+    [self pluginDidLoad];
+
+    [[NSNotificationCenter defaultCenter] postNotificationName:kYZPluginDidLoadNotification object:self];
+}
+
+- (void)pluginDidLoad {
+    self.isActive = YES;
+    NSLog(@"[小杳知] 插件已加载 v%@", [self pluginVersion]);
+
+    // 监听应用生命周期
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationDidEnterBackground)
+                                                 name:UIApplicationDidEnterBackgroundNotification
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(applicationWillEnterForeground)
+                                                 name:UIApplicationWillEnterForegroundNotification
+                                               object:nil];
+}
+
+- (void)pluginWillUnload {
+    self.isActive = NO;
+    NSLog(@"[小杳知] 插件即将卸载");
+
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [[NSNotificationCenter defaultCenter] postNotificationName:kYZPluginWillUnloadNotification object:self];
+}
+
+- (void)applicationDidEnterBackground {
+    if (!self.isActive) return;
+    [[NSNotificationCenter defaultCenter] postNotificationName:kYZPluginDidEnterBackgroundNotification object:self];
+}
+
+- (void)applicationWillEnterForeground {
+    if (!self.isActive) return;
+    [[NSNotificationCenter defaultCenter] postNotificationName:kYZPluginWillEnterForegroundNotification object:self];
+}
+
+- (BOOL)isPluginActive {
+    return self.isActive;
+}
+
+- (void)setPluginActive:(BOOL)active {
+    if (_isActive == active) return;
+    _isActive = active;
+    NSLog(@"[小杳知] 插件状态: %@", active ? @"启用" : @"禁用");
+
+    // 通知老猫插件管理框架状态变更
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
+    [defaults setBool:active forKey:@"plugin_active"];
+    [defaults synchronize];
+}
+
+@end

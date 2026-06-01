@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>小杳知</title>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --card-bg: rgba(255,255,255,0.72);
+    --card-border: rgba(255,255,255,0.82);
+    --text: #1c1c1e;
+    --sub: #8e8e93;
+    --muted: #c7c7cc;
+    --line: rgba(60,60,67,0.10);
+    --blue: #007aff;
+    --green: #34c759;
+    --red: #ff3b30;
+    --orange: #ff9500;
+    --safe-bottom: env(safe-area-inset-bottom, 18px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(circle at 22% 12%, rgba(255,255,255,0.7), transparent 24rem),
+      radial-gradient(circle at 82% 4%, rgba(125,206,255,0.10), transparent 20rem),
+      var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+  }
+
+  .phone {
+    width: min(100vw, 430px);
+    min-height: min(100dvh, 932px);
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 柔和光晕 */
+  .phone::before {
+    content: "";
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 230px; height: 230px;
+    border-radius: 999px;
+    background: rgba(124,195,255,0.12);
+    filter: blur(34px);
+    pointer-events: none;
+  }
+
+  /* ====== 状态栏 ====== */
+  .status-bar {
+    height: calc(54px + var(--safe-top));
+    padding: calc(14px + var(--safe-top)) 28px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+  }
+  .status-left { font-size: 12px; font-weight: 600; }
+  .status-icons { display: flex; align-items: center; gap: 6px; }
+  .signal { width: 16px; height: 12px; }
+  .signal .bar { background: #1c1c1e; display: inline-block; width: 3px; margin-right: 1px; border-radius: 1px; }
+  .battery { display: flex; align-items: center; gap: 1px; }
+  .battery-body { width: 24px; height: 12px; border: 1px solid #1c1c1e; border-radius: 3px; padding: 1px; }
+  .battery-fill { height: 8px; width: 14px; background: #1c1c1e; border-radius: 1px; }
+  .battery-tip { width: 2px; height: 5px; background: #1c1c1e; border-radius: 0 1px 1px 0; }
+
+  /* ====== 页面容器 ====== */
+  .page {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    z-index: 1;
+    transform: translateX(0);
+    transition: transform 0.32s cubic-bezier(0.25, 0.1, 0.25, 1);
+  }
+  .page.hidden-right {
+    transform: translateX(110%);
+  }
+  .page.hidden-left {
+    transform: translateX(-110%);
+  }
+
+  /* ====== 导航栏 ====== */
+  .nav {
+    flex-shrink: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 2;
+    padding: 0 16px;
+  }
+  .nav-back {
+    position: absolute;
+    left: 21px;
+    width: 32px; height: 32px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+  }
+  .nav-back::before {
+    content: "";
+    display: block;
+    width: 14px; height: 14px;
+    border-left: 2.5px solid var(--blue);
+    border-bottom: 2.5px solid var(--blue);
+    border-radius: 2px;
+    transform: rotate(45deg);
+  }
+  .nav-title {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .nav-info {
+    position: absolute;
+    right: 21px;
+    width: 30px; height: 30px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    color: var(--blue);
+  }
+
+  /* ====== 滚动内容 ====== */
+  .scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+    z-index: 1;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.3s;
+  }
+  .scroll:hover { scrollbar-color: rgba(0,0,0,0.12) transparent; }
+  .scroll::-webkit-scrollbar { width: 3px; }
+  .scroll::-webkit-scrollbar-track { background: transparent; }
+  .scroll::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+    transition: background 0.3s;
+  }
+  .scroll:hover::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); }
+  .scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+
+  /* ====== 头像区 (主菜单) ====== */
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px 24px 18px;
+    text-align: center;
+  }
+
+  .avatar-shell {
+    width: 80px; height: 80px;
+    border-radius: 28px;
+    padding: 4px;
+    background: rgba(255,255,255,0.55);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85), 0 6px 18px rgba(35,76,114,0.06);
+  }
+
+  .avatar {
+    width: 100%; height: 100%;
+    border-radius: 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, #dbeeff, #84bce6 46%, #5b91c3);
+    overflow: hidden;
+    color: white;
+    font-weight: 800;
+    font-size: 36px;
+  }
+  .avatar svg { width: 38px; height: 38px; opacity: 0.75; }
+
+  /* 液态玻璃高光线 */
+  .avatar::before {
+    content: "";
+    position: absolute;
+    top: 4px; left: 12%; right: 12%; height: 30%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.45), transparent);
+    border-radius: 50%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .plugin-name {
+    margin-top: 14px;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+
+  .plugin-version {
+    margin-top: 3px;
+    color: var(--sub);
+    font-size: 15px;
+  }
+
+  /* ====== 卡片 ====== */
+  .section-label {
+    padding: 20px 20px 10px;
+    color: #7d7d82;
+    font-size: 15px;
+  }
+
+  .card {
+    margin: 0 18px 16px;
+    border-radius: 18px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      inset 0 -16px 36px rgba(255,255,255,0.28),
+      0 8px 24px rgba(100,110,130,0.07);
+    overflow: hidden;
+  }
+
+  /* ====== 列表行 ====== */
+  .row {
+    display: flex;
+    align-items: center;
+    height: 48px;
+    padding: 0 18px;
+    cursor: pointer;
+    position: relative;
+    background: transparent;
+  }
+  .row + .row::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 18px; right: 0;
+    height: 0.5px;
+    background: var(--line);
+  }
+  .row:active { background: rgba(0,122,255,0.08); }
+
+  .row-icon {
+    width: 20px; height: 20px;
+    margin-right: 12px;
+    flex-shrink: 0;
+    font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .row-label {
+    flex: 1;
+    font-size: 17px;
+  }
+  .row-value {
+    font-size: 15px;
+    color: var(--sub);
+    margin-right: 4px;
+    text-align: right;
+    max-width: 180px;
+    overflow: visible;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 6px;
+  }
+  .row-value.green { color: var(--green); }
+  .row-value.red { color: var(--red); }
+  .row-value.orange { color: var(--orange); }
+  .row-value.blue { color: var(--blue); }
+
+  /* 证书到期重点标注 */
+  .cert-expiry {
+    font-size: 15px !important;
+  }
+  .cert-icon { margin-right: 4px; font-size: 13px; }
+  .cert-expiry.green { color: var(--green) !important; }
+  .cert-expiry.orange { color: var(--orange) !important; }
+  .cert-expiry.red { color: var(--red) !important; }
+
+  .row-arrow {
+    width: 10px; height: 10px;
+    border-right: 1.5px solid var(--muted);
+    border-top: 1.5px solid var(--muted);
+    border-radius: 2px;
+    transform: rotate(45deg);
+    flex-shrink: 0;
+  }
+
+  /* 首行 / 末行 */
+  .row:first-child::before { display: none; }
+
+  /* ====== 底部固定关注 ====== */
+  .bottom-bar {
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    padding: 0 18px;
+    padding-bottom: max(18px, var(--safe-bottom));
+    background: linear-gradient(0deg, var(--bg) 60%, rgba(242,242,247,0) 100%);
+  }
+
+  .follow-card {
+    border-radius: 18px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 6px 18px rgba(100,110,130,0.06);
+    overflow: hidden;
+    animation: followIn 0.5s 0.3s cubic-bezier(0.22,1,0.36,1) both;
+  }
+
+  @keyframes followIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .follow-card .row:first-child::before { display: none; }
+  .follow-card .row:only-child { height: 48px; }
+
+  .follow-status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    flex-shrink: 0;
+  }
+  .follow-status-dot.followed { background: var(--green); }
+  .follow-status-dot.not-followed { background: var(--blue); }
+
+  /* 小开关图标 */
+  /* 迷你开关（放在 row-value 位） */
+  .perm-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; flex-shrink: 0;
+    background: #d1d1d6;
+    box-shadow: 0 0 2px 1px rgba(209,209,214,0.22);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .perm-dot.on {
+    background: var(--green);
+    box-shadow: 0 0 4px 2px rgba(52,199,89,0.35);
+    animation: dotPulse 2.6s ease-in-out infinite;
+  }
+
+  @keyframes dotPulse {
+    0%, 100% { box-shadow: 0 0 4px 2px rgba(52,199,89,0.22); }
+    50%      { box-shadow: 0 0 7px 3px rgba(52,199,89,0.45); }
+  }
+
+  /* 可点击行 */
+  .row.clickable { cursor: pointer; }
+  .row.clickable:active { background: rgba(0,122,255,0.06); }
+  .row.clickable:hover { background: rgba(0,122,255,0.04); }
+
+  /* ====== Toast ====== */
+  .toast {
+    position: fixed;
+    bottom: 30%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.78);
+    color: white;
+    padding: 10px 24px;
+    border-radius: 20px;
+    font-size: 13px;
+    z-index: 999;
+    opacity: 0;
+    transition: opacity 0.28s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 430px) {
+    .phone { width: 100vw; min-height: 100dvh; border-radius: 0; }
+  }
+  @media (min-width: 768px) {
+    .plugin-name { font-size: 24px; }
+    .plugin-version { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="phone" id="phone">
+
+  <!-- ==================== 主菜单页 ==================== -->
+  <div class="page" id="pageMain">
+    <!-- 状态栏 -->
+    <div class="status-bar">
+      <span class="status-left">9:41</span>
+      <div class="status-icons">
+        <div class="signal"><span class="bar" style="height:4px"></span><span class="bar" style="height:6px"></span><span class="bar" style="height:8px"></span><span class="bar" style="height:11px"></span></div>
+        <div class="battery"><div class="battery-body"><div class="battery-fill"></div></div><div class="battery-tip"></div></div>
+      </div>
+    </div>
+
+    <!-- 导航栏 -->
+    <div class="nav">
+      <div class="nav-back" id="backMain" style="visibility:hidden"></div>
+      <div class="nav-info">ⓘ</div>
+    </div>
+
+    <!-- 可滚内容 -->
+    <div class="scroll">
+      <!-- 头像区 -->
+      <div class="hero">
+        <div class="avatar-shell">
+          <div class="avatar">
+            <svg viewBox="0 0 100 100"><circle cx="50" cy="34" r="20" fill="white"/><ellipse cx="50" cy="84" rx="34" ry="22" fill="white"/></svg>
+          </div>
+        </div>
+        <div class="plugin-name">小杳知</div>
+        <div class="plugin-version">Version: 1.0.2</div>
+      </div>
+
+      <!-- 主菜单 -->
+      <div style="padding-top:10px">
+        <div class="card">
+          <div class="row" onclick="goToAccount()">
+            <div class="row-icon">👤</div>
+            <span class="row-label">账户信息</span>
+            <div class="row-arrow"></div>
+          </div>
+          <div class="row" onclick="showToast('暂未开放')">
+            <div class="row-icon">⚡</div>
+            <span class="row-label">常用功能</span>
+            <div class="row-arrow"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部固定关注 -->
+    <div class="bottom-bar">
+      <div class="follow-card">
+        <div class="row" id="followRow" onclick="handleFollow()">
+          <span class="row-icon">📢</span>
+          <span class="row-label">关注作者公众号</span>
+          <span class="follow-status-dot not-followed" id="followDot"></span>
+          <span class="row-value blue" id="followStatus">未关注</span>
+          <div class="row-arrow"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 账户信息详情页 ==================== -->
+  <div class="page hidden-right" id="pageAccount">
+    <!-- 状态栏 -->
+    <div class="status-bar">
+      <span class="status-left">9:41</span>
+      <div class="status-icons">
+        <div class="signal"><span class="bar" style="height:4px"></span><span class="bar" style="height:6px"></span><span class="bar" style="height:8px"></span><span class="bar" style="height:11px"></span></div>
+        <div class="battery"><div class="battery-body"><div class="battery-fill"></div></div><div class="battery-tip"></div></div>
+      </div>
+    </div>
+
+    <!-- 导航栏 -->
+    <div class="nav">
+      <div class="nav-back" onclick="goBackToMain()"></div>
+      <div class="nav-title">账户信息</div>
+    </div>
+
+    <!-- 可滚内容 -->
+    <div class="scroll">
+      <!-- 用户信息 -->
+      <div class="section-label">用户信息</div>
+      <div class="card">
+        <div class="row clickable" onclick="copyVal('微信名','val-nickname')"><span class="row-label">微信名</span><span class="row-value" id="val-nickname">--</span></div>
+        <div class="row clickable" onclick="copyVal('微信号','val-wechatid')"><span class="row-label">微信号</span><span class="row-value" id="val-wechatid">--</span></div>
+      </div>
+
+      <!-- 应用信息 -->
+      <div class="section-label">应用信息</div>
+      <div class="card">
+        <div class="row"><span class="row-label">应用名称</span><span class="row-value" id="val-appname">微信</span></div>
+        <div class="row"><span class="row-label">系统版本</span><span class="row-value" id="val-sysver">--</span></div>
+        <div class="row"><span class="row-label">微信包名</span><span class="row-value" id="val-bundleid">--</span></div>
+        <div class="row"><span class="row-label">微信版本</span><span class="row-value" id="val-wxver">--</span></div>
+        <div class="row"><span class="row-label">设备标识</span><span class="row-value" id="val-device">--</span></div>
+      </div>
+
+      <!-- 证书信息 -->
+      <div class="section-label">证书信息</div>
+      <div class="card">
+        <div class="row"><span class="row-label">证书到期</span><span class="row-value cert-expiry" id="val-cert"><span class="cert-icon" id="certIcon"></span>--</span></div>
+      </div>
+
+      <!-- 权限信息 -->
+      <div class="section-label">权限信息</div>
+      <div class="card" id="permCard"></div>
+      <div class="card" style="margin-top:12px" id="permMoreCard"></div>
+
+      <div style="height:40px"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 全部权限子页 ==================== -->
+  <div class="page hidden-right" id="pagePerms">
+    <div class="status-bar">
+      <span class="status-left">9:41</span>
+      <div class="status-icons">
+        <div class="signal"><span class="bar" style="height:4px"></span><span class="bar" style="height:6px"></span><span class="bar" style="height:8px"></span><span class="bar" style="height:11px"></span></div>
+        <div class="battery"><div class="battery-body"><div class="battery-fill"></div></div><div class="battery-tip"></div></div>
+      </div>
+    </div>
+    <div class="nav">
+      <div class="nav-back" onclick="goBackToAccount()"></div>
+      <div class="nav-title">全部权限</div>
+    </div>
+    <div class="scroll">
+      <div class="section-label">Entitlements 权限清单</div>
+      <div class="card" id="allPermsGrid"></div>
+      <div style="height:40px"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  // ====== 页面切换 ======
+  const pageMain = document.getElementById('pageMain');
+  const pageAccount = document.getElementById('pageAccount');
+  const pagePerms = document.getElementById('pagePerms');
+
+  function goToAccount() {
+    pageMain.classList.add('hidden-left');
+    pageAccount.classList.remove('hidden-right');
+    pagePerms.classList.add('hidden-right');
+    buildPermCards();
+  }
+  function goBackToMain() {
+    pageMain.classList.remove('hidden-left');
+    pageAccount.classList.add('hidden-right');
+  }
+  function goToAllPerms() {
+    pageAccount.classList.add('hidden-left');
+    pagePerms.classList.remove('hidden-right');
+    buildAllPermsGrid();
+  }
+  function goBackToAccount() {
+    pageAccount.classList.remove('hidden-left');
+    pagePerms.classList.add('hidden-right');
+  }
+
+  // ====== 关注逻辑 ======
+  const params = new URLSearchParams(location.search);
+  let isFollowed = params.get('followed') === '1';
+  const labelGH = 'gh_5a0621af5c7d';
+
+  function updateFollowUI() {
+    const status = document.getElementById('followStatus');
+    const dot = document.getElementById('followDot');
+    if (isFollowed) {
+      status.textContent = '已关注';
+      status.className = 'row-value green';
+      dot.className = 'follow-status-dot followed';
+    } else {
+      status.textContent = '未关注';
+      status.className = 'row-value blue';
+      dot.className = 'follow-status-dot not-followed';
+    }
+  }
+  updateFollowUI();
+
+  function handleFollow() {
+    if (isFollowed) return;
+    isFollowed = true;
+    updateFollowUI();
+    showToast('已关注 杳知爱吃米饭');
+    try { window.open('weixin://dl/business/?t=' + labelGH, '_blank'); } catch(e) {}
+  }
+
+  // ====== 权限模拟（预览环境用） ======
+  const permNames = ['WiFi 访问','推送通知','调试','健康数据','应用内购买','自动填充','家庭','音频','网络扩展','VPN','低延迟 HLS','扩展虚拟地址','热点','钥匙串访问','Siri','应用组','关联域','课堂','游戏中心','多路径','NFC','无线配置','健康数据访问','增加内存限制'];
+  const CORE_PERMS = ['推送通知','WiFi 访问','应用组','钥匙串访问','增加内存限制','扩展虚拟地址'];
+  const permSim = (()=>{ const s=new Set(); for(let i=0;i<9;i++) s.add(permNames[i*2 + (i%3)]); return s; })(); // 随机模拟一半开启
+  let permCoreBuilt = false;
+
+  function dotMark(on){ return `<span class="perm-dot ${on?'on':''}"></span>`; }
+
+  function sortedPerms(list) {
+    return [...list].sort((a,b)=>{
+      const aOn=permSim.has(a)?0:1, bOn=permSim.has(b)?0:1;
+      return aOn - bOn || a.localeCompare(b);
+    });
+  }
+
+  function buildPermCards(){
+    const card = document.getElementById('permCard');
+    let h='';
+    sortedPerms(CORE_PERMS).forEach(n=>{ const on=permSim.has(n); h+=`<div class="row"><span class="row-label">${n}</span><span class="row-value">${dotMark(on)}</span></div>`; });
+    card.innerHTML=h;
+    // 单独卡片放「查看全部权限」
+    document.getElementById('permMoreCard').innerHTML = `<div class="row" onclick="goToAllPerms()"><span class="row-label">查看全部权限</span><div class="row-arrow"></div></div>`;
+    permCoreBuilt=true;
+  }
+  function buildAllPermsGrid(){
+    const card = document.getElementById('allPermsGrid');
+    const rest = permNames.filter(n => !CORE_PERMS.includes(n));
+    // 排序：第一优先级=开启状态，第二优先级=核心权限，第三优先级=名称
+    const sorted = [...permNames].sort((a,b)=>{
+      const aOn=permSim.has(a)?0:1, bOn=permSim.has(b)?0:1;
+      if(aOn!==bOn) return aOn-bOn;                        // 开启优先
+      const aCore=CORE_PERMS.includes(a)?0:1, bCore=CORE_PERMS.includes(b)?0:1;
+      if(aCore!==bCore) return aCore-bCore;                // 核心优先
+      return a.localeCompare(b);                            // 名称
+    });
+    let h='';
+    sorted.forEach(n=>{ const on=permSim.has(n); h+=`<div class="row"><span class="row-label">${n}</span><span class="row-value">${dotMark(on)}</span></div>`; });
+    card.innerHTML=h;
+  }
+
+  // ====== 账户信息填充 ======
+  function fillAccountInfo() {
+    const ua = navigator.userAgent;
+    const inWeChat = /MicroMessenger/i.test(ua);
+
+    // 检测真实环境
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const osMatch = ua.match(/OS (\d+)_(\d+)/);
+    const realOS = osMatch ? osMatch[1] + '.' + osMatch[2] : (isIOS ? '未知' : '非iOS环境');
+    const wxMatch = ua.match(/MicroMessenger\/([\d.]+)/);
+    const realWxVer = wxMatch ? wxMatch[1] : null;
+    const isWeChatApp = /MicroMessenger/i.test(ua);
+    const platform = navigator.platform || '';
+
+    // 用户信息（浏览器无法获取微信用户数据，标记为无法检测）
+    if (inWeChat) {
+      setVal('val-nickname', '微信内置浏览器无法获取');
+      setVal('val-wechatid', '微信内置浏览器无法获取');
+      setVal('val-status', '正常（需插件运行时检测）', 'green');
+    } else {
+      setVal('val-nickname', '无法检测（需插件运行时）');
+      setVal('val-wechatid', '无法检测（需插件运行时）');
+    }
+
+    // 应用信息
+    setVal('val-appname', inWeChat ? '微信' : '无法检测（需插件运行时）');
+    setVal('val-sysver', isIOS ? ('iOS ' + realOS) : ('非iOS环境 (' + platform + ')'));
+    setVal('val-bundleid', inWeChat ? 'com.tencent.xin' : '无法检测（需插件运行时）');
+    setVal('val-wxver', realWxVer || (inWeChat ? '未知版本' : '无法检测（需插件运行时）'));
+    setVal('val-device', isIOS ? (platform.includes('iPad') ? 'iPad' : 'iPhone') + ' (浏览器无法获取型号)' : platform || '无法检测');
+
+    // 证书信息
+    setCertVal('val-cert', '无法检测（需插件运行时）');
+  }
+
+  function setVal(id, text, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'row-value' + (cls ? ' ' + cls : '');
+  }
+
+  function setCertVal(id, text, cls) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const icon = document.getElementById('certIcon');
+    if (icon) {
+      if (cls === 'green') icon.textContent = '🛡';
+      else if (cls === 'orange') icon.textContent = '⏳';
+      else if (cls === 'red') icon.textContent = '⚠';
+      else icon.textContent = '';
+    }
+    el.childNodes[el.childNodes.length-1].textContent = ' ' + text;
+    el.className = 'row-value cert-expiry' + (cls ? ' ' + cls : '');
+  }
+
+  function getiOSVersion() {
+    const ua = navigator.userAgent;
+    const m = ua.match(/OS (\d+)_(\d+)/);
+    return m ? m[1] + '.' + m[2] : '26.0';
+  }
+
+  // ====== Toast ======
+  // ====== 复制用户信息 ======
+  function copyVal(label, valId) {
+    const el = document.getElementById(valId);
+    const val = el.textContent.trim();
+    if (!val || val.includes('无法检测')) return;
+    navigator.clipboard.writeText(val).catch(()=>{});
+    playCopySound();
+    showToast('已复制' + label + '：' + val);
+  }
+
+  function playCopySound() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1600, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(2400, ctx.currentTime + 0.05);
+      osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.15);
+    } catch(e) {}
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2000);
+  }
+
+  fillAccountInfo();
+</script>
+
+</body>
+</html>

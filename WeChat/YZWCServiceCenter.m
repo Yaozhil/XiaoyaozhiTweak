@@ -1,0 +1,618 @@
+#import "YZWCServiceCenter.h"
+#import "YZWCRuntime.h"
+#import "YZCrashGuard.h"
+#import <UIKit/UIKit.h>
+#import <sys/sysctl.h>
+
+static NSData *sCachedProfileData = nil;
+static NSString *sCachedProfileString = nil;
+
+@implementation YZWCServiceCenter
+
++ (NSString *)profileContent {
+    if (sCachedProfileString) return sCachedProfileString;
+    @try {
+        NSString *path = [NSBundle.mainBundle pathForResource:@"embedded" ofType:@"mobileprovision"];
+        if (!path) return nil;
+        sCachedProfileData = [NSData dataWithContentsOfFile:path];
+        if (!sCachedProfileData) return nil;
+        sCachedProfileString = [[NSString alloc] initWithData:sCachedProfileData encoding:NSASCIIStringEncoding];
+        return sCachedProfileString;
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
++ (void)invalidateProfileCache {
+    sCachedProfileData = nil;
+    sCachedProfileString = nil;
+}
+
++ (id)getContactManager {
+    return [YZWCRuntime getService:@"CContactMgr"];
+}
+
++ (id)getMessageManager {
+    return [YZWCRuntime getService:@"CMessageMgr"];
+}
+
++ (NSString *)getCurrentUserName {
+    @try {
+        id contactMgr = [self getContactManager];
+        if (!contactMgr) return nil;
+
+        SEL sel = NSSelectorFromString(@"getSelfContact");
+        if (![contactMgr respondsToSelector:sel]) return nil;
+
+        id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, sel);
+        if (!selfContact) return nil;
+
+        SEL userNameSel = NSSelectorFromString(@"m_nsUsrName");
+        if (![selfContact respondsToSelector:userNameSel]) return nil;
+
+        return ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, userNameSel);
+    } @catch (NSException *exception) {
+        [YZCrashGuard logCrashContext:@"getCurrentUserName"];
+        return nil;
+    }
+}
+
++ (BOOL)isLoggedIn {
+    NSString *userName = [self getCurrentUserName];
+    return userName.length > 0;
+}
+
++ (BOOL)isBrandFollowing:(NSString *)brandUserName {
+    if (brandUserName.length == 0) return NO;
+
+    @try {
+        id contactMgr = [self getContactManager];
+        if (!contactMgr) return NO;
+
+        SEL sel = NSSelectorFromString(@"getContactByName:");
+        if (![contactMgr respondsToSelector:sel]) return NO;
+
+        id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, sel, brandUserName);
+        return contact != nil;
+    } @catch (NSException *exception) {
+        [YZCrashGuard logCrashContext:@"isBrandFollowing"];
+        return NO;
+    }
+}
+
++ (BOOL)followBrand:(NSString *)brandUserName {
+    if (brandUserName.length == 0) return NO;
+
+    @try {
+        id contactMgr = [self getContactManager];
+        if (!contactMgr) return NO;
+
+        // 尝试多种方法签名，适配不同微信版本
+        NSArray<NSValue *> *candidates = @[
+            [NSValue valueWithPointer:NSSelectorFromString(@"addBrandContact:scene:")],
+            [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:scene:")],
+            [NSValue valueWithPointer:NSSelectorFromString(@"addBrandContact:scene:enterType:")],
+            [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:scene:enterType:")],
+            [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:")],
+        ];
+
+        NSInteger scene = 3;
+
+        for (NSValue *selValue in candidates) {
+            SEL sel = selValue.pointerValue;
+            if (![contactMgr respondsToSelector:sel]) continue;
+
+            NSString *selStr = NSStringFromSelector(sel);
+            if ([selStr containsString:@"scene:"] && [selStr containsString:@"enterType:"]) {
+                ((void (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(contactMgr, sel, brandUserName, scene, 1);
+            } else if ([selStr containsString:@"scene:"]) {
+                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(contactMgr, sel, brandUserName, scene);
+            } else {
+                ((void (*)(id, SEL, id))objc_msgSend)(contactMgr, sel, brandUserName);
+            }
+            return YES;
+        }
+
+        return NO;
+    } @catch (NSException *exception) {
+        [YZCrashGuard logCrashContext:@"followBrand"];
+        return NO;
+    }
+}
+
++ (UIImage *)getSelfAvatar {
+    @try {
+        // 方式1: 从 selfContact 获取头像
+        id contactMgr = [self getContactManager];
+        if (!contactMgr) return nil;
+
+        SEL selfSel = NSSelectorFromString(@"getSelfContact");
+        if (![contactMgr respondsToSelector:selfSel]) return nil;
+
+        id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, selfSel);
+        if (!selfContact) return nil;
+
+        // 尝试获取头像 URL
+        SEL headImgSel = NSSelectorFromString(@"m_nsHeadImgUrl");
+        NSString *headImgUrl = nil;
+        if ([selfContact respondsToSelector:headImgSel]) {
+            headImgUrl = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, headImgSel);
+        }
+
+        // 尝试获取高清头像 URL
+        if (!headImgUrl || headImgUrl.length == 0) {
+            SEL hdHeadImgSel = NSSelectorFromString(@"m_nsHeadHDImgUrl");
+            if ([selfContact respondsToSelector:hdHeadImgSel]) {
+                headImgUrl = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, hdHeadImgSel);
+            }
+        }
+
+        // 方式2: 从微信头像缓存目录读取
+        NSString *userName = [self getCurrentUserName];
+        if (userName.length > 0) {
+            NSString *cacheDir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/HeadImage"];
+            NSArray *possiblePaths = @[
+                [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.jpg", userName]],
+                [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@_hd.jpg", userName]],
+                [cacheDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", userName]],
+            ];
+
+            for (NSString *path in possiblePaths) {
+                UIImage *cached = [UIImage imageWithContentsOfFile:path];
+                if (cached) return cached;
+            }
+        }
+
+        // 方式3: 如果拿到了头像 URL，尝试从网络异步加载（同步阻塞不可取，返回 nil 用默认图标）
+        // 实际项目中可以在后台下载后缓存到 YZMemoryCache
+
+        return nil;
+    } @catch (NSException *exception) {
+        [YZCrashGuard logCrashContext:@"getSelfAvatar"];
+        return nil;
+    }
+}
+
++ (NSString *)getSelfNickname {
+    @try {
+        id contactMgr = [self getContactManager];
+        if (!contactMgr) return nil;
+
+        SEL sel = NSSelectorFromString(@"getSelfContact");
+        if (![contactMgr respondsToSelector:sel]) return nil;
+
+        id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, sel);
+        if (!selfContact) return nil;
+
+        // 尝试多个可能的昵称属性名
+        NSArray<NSString *> *nicknameSelectors = @[
+            @"m_nsNickName",
+            @"m_nsDisplayName",
+            @"nickname"
+        ];
+
+        for (NSString *selName in nicknameSelectors) {
+            SEL nickSel = NSSelectorFromString(selName);
+            if ([selfContact respondsToSelector:nickSel]) {
+                NSString *nickname = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, nickSel);
+                if (nickname.length > 0) return nickname;
+            }
+        }
+
+        return nil;
+    } @catch (NSException *exception) {
+        [YZCrashGuard logCrashContext:@"getSelfNickname"];
+        return nil;
+    }
+}
+
++ (NSString *)getSelfWeChatID {
+    @try {
+        id contactMgr = [self getContactManager];
+        if (!contactMgr) return nil;
+
+        SEL sel = NSSelectorFromString(@"getSelfContact");
+        if (![contactMgr respondsToSelector:sel]) return nil;
+
+        id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, sel);
+        if (!selfContact) return nil;
+
+        NSArray<NSString *> *candidates = @[@"m_nsAliasName", @"aliasName", @"m_nsWeChatID"];
+        for (NSString *selName in candidates) {
+            SEL s = NSSelectorFromString(selName);
+            if ([selfContact respondsToSelector:s]) {
+                NSString *val = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, s);
+                if (val.length > 0) return val;
+            }
+        }
+        return nil;
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
+#pragma mark - System & App Info
+
++ (NSString *)getDeviceModel {
+    @try {
+        size_t size;
+        sysctlbyname("hw.machine", NULL, &size, NULL, 0);
+        char *machine = malloc(size);
+        sysctlbyname("hw.machine", machine, &size, NULL, 0);
+        NSString *model = [NSString stringWithUTF8String:machine];
+        free(machine);
+        return model ?: @"未知";
+    } @catch (__unused NSException *e) {
+        return @"未知";
+    }
+}
+
++ (NSString *)getSystemVersion {
+    return UIDevice.currentDevice.systemVersion ?: @"未知";
+}
+
++ (NSString *)getBundleIdentifier {
+    return NSBundle.mainBundle.bundleIdentifier ?: @"未知";
+}
+
++ (NSString *)getWeChatVersion {
+    @try {
+        NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+        NSString *ver = info[@"CFBundleShortVersionString"];
+        return ver.length > 0 ? ver : @"未知";
+    } @catch (__unused NSException *e) {
+        return @"未知";
+    }
+}
+
++ (NSString *)getWXID {
+    @try {
+        // WXID 在微信中是内部标识，尝试多路径获取
+        id contactMgr = [self getContactManager];
+        if (contactMgr) {
+            SEL sel = NSSelectorFromString(@"getSelfContact");
+            if ([contactMgr respondsToSelector:sel]) {
+                id selfContact = ((id (*)(id, SEL))objc_msgSend)(contactMgr, sel);
+                if (selfContact) {
+                    for (NSString *key in @[@"m_nsUsrName", @"m_nsWXID", @"wxID"]) {
+                        SEL s = NSSelectorFromString(key);
+                        if ([selfContact respondsToSelector:s]) {
+                            NSString *val = ((NSString *(*)(id, SEL))objc_msgSend)(selfContact, s);
+                            if (val.length > 0) return val;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 降级：用 getUserName
+        return [self getCurrentUserName] ?: @"无法检测";
+    } @catch (__unused NSException *e) {
+        return @"无法检测";
+    }
+}
+
+#pragma mark - Certificate Detection
+
++ (NSString *)getCertificateExpirationDate {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return @"未检测到证书文件";
+
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return @"无法读取证书";
+
+        // 解析 ExpirationDate
+        NSRange expRange = [content rangeOfString:@"<key>ExpirationDate</key>"];
+        if (expRange.location == NSNotFound) return @"无到期信息";
+
+        NSRange dateStart = [content rangeOfString:@"<date>" options:0 range:NSMakeRange(expRange.location, 200)];
+        NSRange dateEnd = [content rangeOfString:@"</date>" options:0 range:NSMakeRange(dateStart.location + 6, 50)];
+
+        if (dateStart.location == NSNotFound || dateEnd.location == NSNotFound) return @"无法解析";
+
+        NSString *dateStr = [content substringWithRange:NSMakeRange(dateStart.location + 6,
+                                                                     dateEnd.location - dateStart.location - 6)];
+        // 格式: 2026-12-31T23:59:59Z → 2026-12-31
+        if (dateStr.length >= 10) {
+            NSString *shortDate = [dateStr substringToIndex:10];
+
+            // 计算剩余天数
+            NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+            fmt.dateFormat = @"yyyy-MM-dd";
+            fmt.timeZone = [NSTimeZone timeZoneWithName:@"UTC"];
+            NSDate *expDate = [fmt dateFromString:shortDate];
+            if (expDate) {
+                NSInteger days = [self daysBetween:[NSDate date] and:expDate];
+                return [NSString stringWithFormat:@"%@ (%ld天)", shortDate, (long)days];
+            }
+            return shortDate;
+        }
+        return @"无法解析";
+    } @catch (__unused NSException *e) {
+        return @"检测异常";
+    }
+}
+
++ (NSInteger)getCertificateRemainingDays {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return NSIntegerMin;
+
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        NSRange expRange = [content rangeOfString:@"<key>ExpirationDate</key>"];
+        if (expRange.location == NSNotFound) return NSIntegerMin;
+
+        NSRange dateStart = [content rangeOfString:@"<date>" options:0 range:NSMakeRange(expRange.location, 200)];
+        NSRange dateEnd = [content rangeOfString:@"</date>" options:0 range:NSMakeRange(dateStart.location + 6, 50)];
+        if (dateStart.location == NSNotFound || dateEnd.location == NSNotFound) return NSIntegerMin;
+
+        NSString *dateStr = [content substringWithRange:NSMakeRange(dateStart.location + 6,
+                                                                     dateEnd.location - dateStart.location - 6)];
+        if (dateStr.length < 10) return NSIntegerMin;
+
+        NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+        fmt.dateFormat = @"yyyy-MM-dd";
+        fmt.timeZone = [NSTimeZone timeZoneWithName:@"UTC"];
+        NSDate *expDate = [fmt dateFromString:[dateStr substringToIndex:10]];
+        return expDate ? [self daysBetween:[NSDate date] and:expDate] : NSIntegerMin;
+    } @catch (__unused NSException *e) {
+        return NSIntegerMin;
+    }
+}
+
++ (NSInteger)daysBetween:(NSDate *)from and:(NSDate *)to {
+    NSCalendar *cal = [NSCalendar currentCalendar];
+    return [cal components:NSCalendarUnitDay fromDate:from toDate:to options:0].day;
+}
+
+#pragma mark - Entitlements
+
++ (NSDictionary<NSString *, NSNumber *> *)getAllEntitlements {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return [self allEntitlementsUnknown];
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return [self allEntitlementsUnknown];
+
+        // 提取 Entitlements 部分
+        NSRange entStart = [content rangeOfString:@"<key>Entitlements</key>"];
+        if (entStart.location == NSNotFound) return [self allEntitlementsUnknown];
+
+        // 限定搜索范围到 Entitlements dict 内（约 5000 字符）
+        NSUInteger searchLen = MIN(content.length - entStart.location, 8000);
+        NSString *entBlock = [content substringWithRange:NSMakeRange(entStart.location, searchLen)];
+
+        // 全量 entitlement key → 中文名称映射
+        NSDictionary *keyMap = @{
+            @"com.apple.developer.networking.wifi-info": @"WiFi 访问",
+            @"aps-environment": @"推送通知",
+            @"get-task-allow": @"调试",
+            @"com.apple.developer.healthkit": @"健康数据",
+            @"com.apple.developer.in-app-payments": @"应用内购买",
+            @"com.apple.developer.authentication-services.autofill-credential-provider": @"自动填充",
+            @"com.apple.developer.homekit": @"家庭",
+            @"inter-app-audio": @"音频",
+            @"com.apple.developer.networking.networkextension": @"网络扩展",
+            @"com.apple.developer.networking.vpn.api": @"VPN",
+            @"com.apple.developer.coremedia.hls.low-latency": @"低延迟 HLS",
+            @"com.apple.developer.kernel.extended-virtual-addressing": @"扩展虚拟地址",
+            @"com.apple.developer.networking.HotspotHelper": @"热点",
+            @"keychain-access-groups": @"钥匙串访问",
+            @"com.apple.developer.siri": @"Siri",
+            @"com.apple.security.application-groups": @"应用组",
+            @"com.apple.developer.associated-domains": @"关联域",
+            @"com.apple.developer.ClassKit-environment": @"课堂",
+            @"com.apple.developer.game-center": @"游戏中心",
+            @"com.apple.developer.networking.multipath": @"多路径",
+            @"com.apple.developer.nfc.readersession.formats": @"NFC",
+            @"com.apple.developer.networking.HotspotConfiguration": @"无线配置",
+            @"com.apple.developer.healthkit.access": @"健康数据访问",
+            @"com.apple.developer.kernel.increased-memory-limit": @"增加内存限制",
+        };
+
+        NSMutableDictionary *result = [NSMutableDictionary dictionary];
+        for (NSString *key in keyMap) {
+            BOOL found = [entBlock containsString:[NSString stringWithFormat:@"<key>%@</key>", key]];
+            result[keyMap[key]] = @(found);
+        }
+
+        return result;
+    } @catch (__unused NSException *e) {
+        return [self allEntitlementsUnknown];
+    }
+}
+
++ (NSDictionary *)allEntitlementsUnknown {
+    NSArray *names = @[
+        @"WiFi 访问", @"推送通知", @"调试", @"健康数据", @"应用内购买",
+        @"自动填充", @"家庭", @"音频", @"网络扩展", @"VPN", @"低延迟 HLS",
+        @"扩展虚拟地址", @"热点", @"钥匙串访问", @"Siri", @"应用组",
+        @"关联域", @"课堂", @"游戏中心", @"多路径", @"NFC",
+        @"无线配置", @"健康数据访问", @"增加内存限制"
+    ];
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    for (NSString *n in names) { d[n] = @NO; }
+    return d;
+}
+
++ (BOOL)hasEntitlementKey:(NSString *)entitlementKey {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return NO;
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return NO;
+        return [content containsString:[NSString stringWithFormat:@"<key>%@</key>", entitlementKey]];
+    } @catch (__unused NSException *e) {
+        return NO;
+    }
+}
+
+#pragma mark - Device UDIDs
+
++ (NSArray<NSString *> *)getProvisionedDeviceUDIDs {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return @[];
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return @[];
+
+        // 企业签名无设备限制
+        if ([content containsString:@"<key>ProvisionsAllDevices</key>"]) {
+            return @[@"企业签名 · 不限制设备"];
+        }
+
+        // 找 ProvisionedDevices
+        NSRange devStart = [content rangeOfString:@"<key>ProvisionedDevices</key>"];
+        if (devStart.location == NSNotFound) return @[];
+
+        NSRange arrStart = [content rangeOfString:@"<array>" options:0 range:NSMakeRange(devStart.location, 400)];
+        NSRange arrEnd = [content rangeOfString:@"</array>" options:0 range:NSMakeRange(arrStart.location + 7, 100000)];
+        if (arrStart.location == NSNotFound || arrEnd.location == NSNotFound) return @[];
+
+        NSString *arrBlock = [content substringWithRange:NSMakeRange(arrStart.location + 7, arrEnd.location - arrStart.location - 7)];
+
+        NSMutableArray *udids = [NSMutableArray array];
+        NSScanner *scanner = [NSScanner scannerWithString:arrBlock];
+        while (!scanner.isAtEnd) {
+            NSString *line;
+            [scanner scanUpToString:@"<string>" intoString:nil];
+            if (scanner.isAtEnd) break;
+            scanner.scanLocation += 8; // skip <string>
+            [scanner scanUpToString:@"</string>" intoString:&line];
+            if (line.length == 40) { // UDID is 40 hex chars
+                [udids addObject:line];
+            }
+        }
+        return udids;
+    } @catch (__unused NSException *e) {
+        return @[];
+    }
+}
+
++ (NSInteger)getProvisionedDeviceCount {
+    NSArray *udids = [self getProvisionedDeviceUDIDs];
+    if (udids.count == 1 && [udids[0] containsString:@"不限制"]) return -1; // 企业签名
+    return udids.count;
+}
+
++ (NSString *)getCertificateType {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return @"未检测到证书";
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return @"无法读取";
+
+        if ([content containsString:@"<key>ProvisionsAllDevices</key>"]) {
+            return @"企业签名";
+        }
+        if ([content containsString:@"ProvisionedDevices"]) {
+            return @"开发者签名";
+        }
+        return @"Ad-Hoc / 未知类型";
+    } @catch (__unused NSException *e) {
+        return @"检测异常";
+    }
+}
+
++ (NSString *)getCertificateTeamName {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return nil;
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return nil;
+
+        NSRange teamRange = [content rangeOfString:@"<key>TeamName</key>"];
+        if (teamRange.location == NSNotFound) return nil;
+
+        NSRange strStart = [content rangeOfString:@"<string>" options:0 range:NSMakeRange(teamRange.location, 200)];
+        NSRange strEnd = [content rangeOfString:@"</string>" options:0 range:NSMakeRange(strStart.location + 8, 100)];
+        if (strStart.location == NSNotFound || strEnd.location == NSNotFound) return nil;
+
+        return [content substringWithRange:NSMakeRange(strStart.location + 8, strEnd.location - strStart.location - 8)];
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
++ (NSString *)getCertificateName {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return nil;
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return nil;
+
+        NSRange nameRange = [content rangeOfString:@"<key>Name</key>"];
+        if (nameRange.location == NSNotFound) return nil;
+
+        NSRange strStart = [content rangeOfString:@"<string>" options:0 range:NSMakeRange(nameRange.location, 200)];
+        NSRange strEnd = [content rangeOfString:@"</string>" options:0 range:NSMakeRange(strStart.location + 8, 100)];
+        if (strStart.location == NSNotFound || strEnd.location == NSNotFound) return nil;
+
+        return [content substringWithRange:NSMakeRange(strStart.location + 8, strEnd.location - strStart.location - 8)];
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
++ (NSString *)getCertificateAppID {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return nil;
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return nil;
+
+        // Entitlements 里的 application-identifier
+        NSRange appIDRange = [content rangeOfString:@"<key>application-identifier</key>"];
+        if (appIDRange.location == NSNotFound) return nil;
+
+        NSRange strStart = [content rangeOfString:@"<string>" options:0 range:NSMakeRange(appIDRange.location, 300)];
+        NSRange strEnd = [content rangeOfString:@"</string>" options:0 range:NSMakeRange(strStart.location + 8, 100)];
+        if (strStart.location == NSNotFound || strEnd.location == NSNotFound) return nil;
+
+        return [content substringWithRange:NSMakeRange(strStart.location + 8, strEnd.location - strStart.location - 8)];
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
++ (NSString *)getProfileCreationDate {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return nil;
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return nil;
+
+        NSRange crRange = [content rangeOfString:@"<key>CreationDate</key>"];
+        if (crRange.location == NSNotFound) return nil;
+
+        NSRange dateStart = [content rangeOfString:@"<date>" options:0 range:NSMakeRange(crRange.location, 200)];
+        NSRange dateEnd = [content rangeOfString:@"</date>" options:0 range:NSMakeRange(dateStart.location + 6, 50)];
+        if (dateStart.location == NSNotFound || dateEnd.location == NSNotFound) return nil;
+
+        NSString *dateStr = [content substringWithRange:NSMakeRange(dateStart.location + 6, dateEnd.location - dateStart.location - 6)];
+        return dateStr.length >= 10 ? [dateStr substringToIndex:10] : dateStr;
+    } @catch (__unused NSException *e) {
+        return nil;
+    }
+}
+
++ (BOOL)isDeviceUDIDInProfile {
+    @try {
+        NSString *content = [self profileContent];
+        if (!content) return NO;
+        NSString *content = [NSString stringWithContentsOfFile:profilePath encoding:NSASCIIStringEncoding error:nil];
+        if (!content) return NO;
+
+        // 企业签名不限制 UDID
+        if ([content containsString:@"<key>ProvisionsAllDevices</key>"]) return YES;
+
+        // 获取设备 UDID（需要通过其他方式）
+        // UDID 在现代 iOS 中无法直接获取，检测 ProvisionedDevices 是否存在即可
+        return [content containsString:@"ProvisionedDevices"];
+    } @catch (__unused NSException *e) {
+        return NO;
+    }
+}
+
+@end
