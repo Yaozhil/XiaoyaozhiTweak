@@ -6,6 +6,7 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
+#import <objc/message.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
