@@ -226,6 +226,8 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
         imageView.image = customIcon;
         imageView.contentMode = UIViewContentModeScaleAspectFit;
         imageView.backgroundColor = UIColor.clearColor;
+        imageView.layer.cornerRadius = frame.size.width / 2.0;
+        imageView.clipsToBounds = YES;
         [icon addSubview:imageView];
         return icon;
     }
@@ -956,24 +958,28 @@ static NSDictionary *sEntitlementsCache = nil;
         return;
     }
 
-    id rewardVC = ((id (*)(id, SEL))objc_msgSend)([rewardVCClass alloc], @selector(init));
-    if (!rewardVC) {
-        [self showToast:@"无法打开打赏页"];
-        return;
-    }
+    @try {
+        id rewardVC = ((id (*)(id, SEL))objc_msgSend)([rewardVCClass alloc], @selector(init));
+        if (!rewardVC || ![rewardVC isKindOfClass:UIViewController.class]) {
+            [self showToast:@"无法打开打赏页"];
+            return;
+        }
 
-    [rewardVC setValue:@YES forKey:@"fromPluginSponsorPage"];
-    [rewardVC setValue:@YES forKey:@"pluginReward"];
-    [rewardVC setValue:kYZAuthorWxid forKey:@"wxid"];
+        [rewardVC setValue:@YES forKey:@"fromPluginSponsorPage"];
+        [rewardVC setValue:@YES forKey:@"pluginReward"];
+        [rewardVC setValue:kYZAuthorWxid forKey:@"wxid"];
 
-    UIViewController *topVC = self;
-    while (topVC.presentedViewController) topVC = topVC.presentedViewController;
-
-    UINavigationController *nav = topVC.navigationController;
-    if (nav) {
-        [nav pushViewController:rewardVC animated:YES];
-    } else {
-        [self showToast:@"无法打开打赏页"];
+        UIViewController *topVC = self;
+        while (topVC.presentedViewController) topVC = topVC.presentedViewController;
+        UINavigationController *nav = topVC.navigationController;
+        if (nav) {
+            [nav pushViewController:rewardVC animated:YES];
+        } else {
+            [self showToast:@"无法打开打赏页"];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] 打赏页异常: %@", exception);
+        [self showToast:@"打赏功能暂不可用"];
     }
 }
 
@@ -984,7 +990,7 @@ static NSDictionary *sEntitlementsCache = nil;
     }
 
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"关注公众号"
-                                                                   message:@"杳知爱吃米饭\n\n点击关注即可收到最新推送"
+                                                                   message:@"杳知爱吃米饭\n\n\n点击关注即可收到最新推送"
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:@"关注" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
