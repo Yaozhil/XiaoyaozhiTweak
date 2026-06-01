@@ -164,27 +164,20 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.bottomBar addSubview:self.followCard];
 
     // 行内元素
-    UILabel *icon = [[UILabel alloc] initWithFrame:CGRectMake(18, 14, 20, 20)];
-    icon.text = @"📢"; icon.font = [UIFont systemFontOfSize:18];
-    [self.followCard addSubview:icon];
-
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(50, 14, 160, 20)];
-    label.text = @"关注作者公众号";
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(22, 14, cardW - 136, 20)];
+    label.text = @"关注小杳知公众号";
     label.font = [UIFont systemFontOfSize:17];
     label.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [self.followCard addSubview:label];
 
-    self.followDot = [[UIView alloc] initWithFrame:CGRectMake(cardW - 90, 20, 8, 8)];
+    self.followDot = [[UIView alloc] initWithFrame:CGRectMake(cardW - 86, 20, 8, 8)];
     self.followDot.layer.cornerRadius = 4;
     [self.followCard addSubview:self.followDot];
 
-    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 78, 14, 50, 20)];
+    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 72, 14, 58, 20)];
     self.followStatusLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    self.followStatusLabel.textAlignment = NSTextAlignmentRight;
     [self.followCard addSubview:self.followStatusLabel];
-
-    UIView *arrow = [self arrowView];
-    arrow.frame = CGRectMake(cardW - 40, 0, 32, 48);
-    [self.followCard addSubview:arrow];
 }
 
 - (void)buildTableHeader:(CGFloat)w {

@@ -253,13 +253,6 @@
   }
   .row:active { background: rgba(0,122,255,0.08); }
 
-  .row-icon {
-    width: 20px; height: 20px;
-    margin-right: 12px;
-    flex-shrink: 0;
-    font-size: 18px;
-    display: flex; align-items: center; justify-content: center;
-  }
   .row-label {
     flex: 1;
     font-size: 17px;
@@ -424,7 +417,7 @@
           </div>
         </div>
         <div class="plugin-name">小杳知</div>
-        <div class="plugin-version">Version: 1.0.8</div>
+        <div class="plugin-version">Version: 1.0.9</div>
       </div>
 
       <!-- 主菜单 -->
@@ -446,11 +439,9 @@
     <div class="bottom-bar">
       <div class="follow-card">
         <div class="row" id="followRow" onclick="handleFollow()">
-          <span class="row-icon">📢</span>
-          <span class="row-label">关注作者公众号</span>
+          <span class="row-label">关注小杳知公众号</span>
           <span class="follow-status-dot not-followed" id="followDot"></span>
           <span class="row-value blue" id="followStatus">未关注</span>
-          <div class="row-arrow"></div>
         </div>
       </div>
     </div>
