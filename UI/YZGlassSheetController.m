@@ -9,12 +9,11 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
-#import <CoreImage/CoreImage.h>
-
 extern UIImage *YZEmbeddedDonationImage(void);
 extern UIImage *YZEmbeddedFollowIconImage(void);
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
+static NSString *const kYZAuthorWxid = @"rouneed";
 static NSInteger const kYZDonationOverlayTag = 95101;
 static NSInteger const kYZDonationCardTag = 95102;
 static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
@@ -950,48 +949,31 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)showRewardSheet {
-    [self showToast:@"正在识别赞赏码..."];
+    Class rewardVCClass = NSClassFromString(@"WCPayQRCodeRewardPayerDetailViewController");
+    if (!rewardVCClass) {
+        [self showToast:@"当前微信版本不支持打赏功能"];
+        return;
+    }
 
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        // 从 layout 路径加载赞赏码图片并解码
-        UIImage *image = nil;
-        NSArray *paths = @[
-            @"/var/jb/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
-            @"/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
-        ];
-        for (NSString *path in paths) {
-            image = [UIImage imageWithContentsOfFile:path];
-            if (image) break;
-        }
+    id rewardVC = ((id (*)(id, SEL))objc_msgSend)([rewardVCClass alloc], @selector(init));
+    if (!rewardVC) {
+        [self showToast:@"无法打开打赏页"];
+        return;
+    }
 
-        NSString *qrURL = nil;
-        if (image) {
-            CIImage *ci = [[CIImage alloc] initWithImage:image];
-            CIDetector *det = [CIDetector detectorOfType:CIDetectorTypeQRCode context:nil options:@{CIDetectorAccuracy: CIDetectorAccuracyHigh}];
-            for (CIQRCodeFeature *f in (NSArray<CIQRCodeFeature *> *)[det featuresInImage:ci]) {
-                if (f.messageString.length > 0) { qrURL = f.messageString; break; }
-            }
-        }
+    [rewardVC setValue:@YES forKey:@"fromPluginSponsorPage"];
+    [rewardVC setValue:@YES forKey:@"pluginReward"];
+    [rewardVC setValue:kYZAuthorWxid forKey:@"wxid"];
 
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (qrURL.length > 0) {
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"投喂作者"
-                                                                               message:@"将打开微信打赏页面"
-                                                                        preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-                [alert addAction:[UIAlertAction actionWithTitle:@"打开" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
-                    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:qrURL] options:@{} completionHandler:nil];
-                }]];
-                [self presentViewController:alert animated:YES completion:nil];
-            } else {
-                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"赞赏码未识别"
-                                                                               message:@"请长按下方赞赏码图片保存到相册，\n然后使用微信扫一扫识别"
-                                                                        preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"好的" style:UIAlertActionStyleDefault handler:nil]];
-                [self presentViewController:alert animated:YES completion:nil];
-            }
-        });
-    });
+    UIViewController *topVC = self;
+    while (topVC.presentedViewController) topVC = topVC.presentedViewController;
+
+    UINavigationController *nav = topVC.navigationController;
+    if (nav) {
+        [nav pushViewController:rewardVC animated:YES];
+    } else {
+        [self showToast:@"无法打开打赏页"];
+    }
 }
 
 - (void)handleFollowTap {
