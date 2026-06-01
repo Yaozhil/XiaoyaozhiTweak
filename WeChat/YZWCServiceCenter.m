@@ -431,7 +431,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (NSString *)getDeviceModel {
     NSString *identifier = [self getMachineIdentifier];
     NSString *name = [self deviceModelNameForIdentifier:identifier] ?: [self genericDeviceModelNameForIdentifier:identifier];
-    if (name.length > 0 && identifier.length > 0) return [NSString stringWithFormat:@"%@ (%@)", name, identifier];
+    if (name.length > 0) return name;
     return identifier ?: @"未知";
 }
 
