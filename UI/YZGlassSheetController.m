@@ -26,9 +26,12 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 @property (nonatomic, strong) UIView *followCard;
 @property (nonatomic, strong) UILabel *followStatusLabel;
 @property (nonatomic, strong) UIView *followDot;
+@property (nonatomic, strong) UIScreenEdgePanGestureRecognizer *internalBackGesture;
 @property (nonatomic, assign) BOOL isFollowed;
 @property (nonatomic, assign) BOOL isPresented;
-@property (nonatomic, assign) NSInteger currentPage; // 0=main, 1=account
+@property (nonatomic, assign) NSInteger currentPage; // 0=main, 1=account, 2=all permissions
+@property (nonatomic, assign) BOOL savedInteractivePopEnabled;
+@property (nonatomic, assign) BOOL hasSavedInteractivePopState;
 @end
 
 @implementation YZGlassSheetController
@@ -55,9 +58,15 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     [super viewWillAppear:animated];
     [self configureHostNavigation];
     [self updateBackButtonVisibility];
+    [self updateInteractivePopGesture];
     if (!self.isPresented) {
         self.isPresented = YES;
     }
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self restoreInteractivePopGesture];
 }
 
 #pragma mark - Main UI
@@ -80,6 +89,11 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     self.navBar = [[UIView alloc] initWithFrame:CGRectMake(0, navY, w, navH)];
     self.navBar.backgroundColor = [UIColor clearColor];
     [self.view addSubview:self.navBar];
+
+    self.internalBackGesture = [[UIScreenEdgePanGestureRecognizer alloc] initWithTarget:self action:@selector(handleInternalBackGesture:)];
+    self.internalBackGesture.edges = UIRectEdgeLeft;
+    self.internalBackGesture.enabled = NO;
+    [self.view addGestureRecognizer:self.internalBackGesture];
 
     self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.backButton.frame = CGRectMake(8, 10, 32, 32);
@@ -166,19 +180,19 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     CGFloat headerH = 230;
     self.headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, headerH)];
 
-    CGFloat avatarSize = 80;
-    CGFloat shellSize = 88;
+    CGFloat avatarSize = 92;
+    CGFloat shellSize = 102;
     CGFloat shellX = (w - shellSize) / 2.0;
-    CGFloat shellY = 28;
+    CGFloat shellY = 24;
 
     self.avatarShell = [[UIView alloc] initWithFrame:CGRectMake(shellX, shellY, shellSize, shellSize)];
     self.avatarShell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.55];
-    self.avatarShell.layer.cornerRadius = 28;
+    self.avatarShell.layer.cornerRadius = 30;
     self.avatarShell.clipsToBounds = YES;
     [self.headerView addSubview:self.avatarShell];
 
-    self.avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(4, 4, avatarSize, avatarSize)];
-    self.avatarView.layer.cornerRadius = 24;
+    self.avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(5, 5, avatarSize, avatarSize)];
+    self.avatarView.layer.cornerRadius = 26;
     self.avatarView.clipsToBounds = YES;
     self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarView.backgroundColor = [UIColor colorWithRed:0.86 green:0.93 blue:1.0 alpha:1.0];
@@ -186,17 +200,17 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     [self.avatarShell addSubview:self.avatarView];
 
     // 名称
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 14, w, 32)];
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 12, w, 30)];
     self.nameLabel.text = @"小杳知";
-    self.nameLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
+    self.nameLabel.font = [UIFont systemFontOfSize:26 weight:UIFontWeightBold];
     self.nameLabel.textAlignment = NSTextAlignmentCenter;
     self.nameLabel.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [self.headerView addSubview:self.nameLabel];
 
     // 版本
-    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 48, w, 20)];
+    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 43, w, 20)];
     self.versionLabel.text = [NSString stringWithFormat:@"Version: %@", [YZPluginLifecycle sharedInstance].pluginVersion];
-    self.versionLabel.font = [UIFont systemFontOfSize:15];
+    self.versionLabel.font = [UIFont systemFontOfSize:14];
     self.versionLabel.textAlignment = NSTextAlignmentCenter;
     self.versionLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
     [self.headerView addSubview:self.versionLabel];
@@ -445,6 +459,34 @@ static NSDictionary *sEntitlementsCache = nil;
     [self.navigationItem setHidesBackButton:YES animated:NO];
 }
 
+- (void)updateInteractivePopGesture {
+    UIGestureRecognizer *gesture = self.navigationController.interactivePopGestureRecognizer;
+    if (gesture) {
+        if (!self.hasSavedInteractivePopState) {
+            self.savedInteractivePopEnabled = gesture.enabled;
+            self.hasSavedInteractivePopState = YES;
+        }
+        gesture.enabled = (self.currentPage == 0 && [self shouldShowRootBackButton]) ? self.savedInteractivePopEnabled : NO;
+    }
+    self.internalBackGesture.enabled = (self.currentPage != 0);
+}
+
+- (void)restoreInteractivePopGesture {
+    UIGestureRecognizer *gesture = self.navigationController.interactivePopGestureRecognizer;
+    if (!gesture || !self.hasSavedInteractivePopState) return;
+    gesture.enabled = self.savedInteractivePopEnabled;
+    self.hasSavedInteractivePopState = NO;
+}
+
+- (void)handleInternalBackGesture:(UIScreenEdgePanGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateEnded) return;
+    CGPoint translation = [gesture translationInView:self.view];
+    CGPoint velocity = [gesture velocityInView:self.view];
+    if (translation.x > 44 || velocity.x > 360) {
+        [self didTapBack];
+    }
+}
+
 - (BOOL)shouldShowRootBackButton {
     UINavigationController *navigationController = self.navigationController;
     return navigationController && navigationController.viewControllers.firstObject != self;
@@ -454,33 +496,57 @@ static NSDictionary *sEntitlementsCache = nil;
     self.backButton.hidden = (self.currentPage == 0 && ![self shouldShowRootBackButton]);
 }
 
+- (CGPoint)tableTopOffset {
+    CGFloat topInset = 0;
+    if (@available(iOS 11.0, *)) {
+        topInset = self.tableView.adjustedContentInset.top;
+    } else {
+        topInset = self.tableView.contentInset.top;
+    }
+    return CGPointMake(0, -topInset);
+}
+
+- (void)reloadTableAtTop {
+    CGPoint topOffset = [self tableTopOffset];
+    [UIView performWithoutAnimation:^{
+        [self.tableView setContentOffset:topOffset animated:NO];
+        [self.tableView reloadData];
+        [self.tableView layoutIfNeeded];
+        [self.tableView setContentOffset:topOffset animated:NO];
+    }];
+}
+
 - (void)goToAccountInfo {
     self.currentPage = 1;
     sEntitlementsCache = nil; // 刷新缓存
     [self updateBackButtonVisibility];
+    [self updateInteractivePopGesture];
     self.navTitle.hidden = NO;
     self.navTitle.text = @"账户信息";
     self.infoButton.hidden = YES;
-    [self.tableView reloadData];
+    [self reloadTableAtTop];
 }
 
 - (void)goToAllPermissions {
     self.currentPage = 2;
+    [self updateInteractivePopGesture];
     self.navTitle.text = @"全部权限";
-    [self.tableView reloadData];
+    [self reloadTableAtTop];
 }
 
 - (void)didTapBack {
     if (self.currentPage == 2) {
         self.currentPage = 1;
+        [self updateInteractivePopGesture];
         self.navTitle.text = @"账户信息";
-        [self.tableView reloadData];
+        [self reloadTableAtTop];
     } else if (self.currentPage == 1) {
         self.currentPage = 0;
         [self updateBackButtonVisibility];
+        [self updateInteractivePopGesture];
         self.navTitle.hidden = YES;
         self.infoButton.hidden = NO;
-        [self.tableView reloadData];
+        [self reloadTableAtTop];
     } else if (self.currentPage == 0 && [self shouldShowRootBackButton]) {
         [self.navigationController popViewControllerAnimated:YES];
     }
