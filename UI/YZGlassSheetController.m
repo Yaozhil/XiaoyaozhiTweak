@@ -13,7 +13,7 @@ extern UIImage *YZEmbeddedDonationImage(void);
 extern UIImage *YZEmbeddedFollowIconImage(void);
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
-static NSString *const kYZAuthorWxid = @"rouneed";
+static NSString *const kYZAuthorWxid = @"wxid_t04guwoqziq221";
 static NSInteger const kYZDonationOverlayTag = 95101;
 static NSInteger const kYZDonationCardTag = 95102;
 static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
