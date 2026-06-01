@@ -1,0 +1,45 @@
+name: Build rootless deb
+
+"on":
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          brew list dpkg >/dev/null 2>&1 || brew install dpkg
+          brew list xz >/dev/null 2>&1 || brew install xz
+
+      - name: Install Theos
+        run: |
+          rm -rf "$RUNNER_TEMP/theos"
+          git clone --depth=1 --recursive https://github.com/theos/theos.git "$RUNNER_TEMP/theos"
+          echo "THEOS=$RUNNER_TEMP/theos" >> $GITHUB_ENV
+
+      - name: Build package
+        run: |
+          make clean
+          make package FINALPACKAGE=1
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p output
+          cp packages/*.deb output/ 2>/dev/null || true
+          find .theos -name "XiaoyaozhiTweak.dylib" -exec cp {} output/ \; 2>/dev/null || true
+          cp control output/PACKAGE_INFO.txt 2>/dev/null || true
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiaoyaozhiTweak-rootless
+          path: output/
+          retention-days: 30
