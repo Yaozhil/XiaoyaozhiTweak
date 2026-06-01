@@ -8,6 +8,7 @@ typedef NS_ENUM(NSInteger, YZDeviceModel) {
 };
 
 typedef NS_ENUM(NSInteger, YZDisplayType) {
+    YZDisplayTypeUnknown,
     YZDisplayTypeNotch,     // 全面屏 (iPhone X+)
     YZDisplayTypeClassic,   // 非全面屏 (iPhone 8 及以下)
     YZDisplayTypeiPad

@@ -37,12 +37,20 @@
             break;
     }
 
+    self.isLowPowerMode = NSProcessInfo.processInfo.isLowPowerModeEnabled;
+
     // 阶段2: 全面屏检测延迟到主线程 UI 就绪后
     if (self.deviceModel == YZDeviceModeliPhone) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self detectDisplayType];
         });
     }
+
+    NSLog(@"[小杳知] 环境检测: iOS %ld | 液态玻璃: %@ | 屏幕类型: %ld | 低功耗: %@",
+          (long)self.iOSMajorVersion,
+          self.supportsLiquidGlass ? @"✅" : @"模拟",
+          (long)self.displayType,
+          self.isLowPowerMode ? @"是" : @"否");
 }
 
 - (void)detectDisplayType {
@@ -62,16 +70,6 @@
 
     self.displayType = (window.safeAreaInsets.bottom > 0) ? YZDisplayTypeNotch : YZDisplayTypeClassic;
     NSLog(@"[小杳知] 屏幕类型检测完成: %@", self.displayType == YZDisplayTypeNotch ? @"全面屏" : @"非全面屏");
-}
-
-    // 低功耗模式检测
-    self.isLowPowerMode = NSProcessInfo.processInfo.isLowPowerModeEnabled;
-
-    NSLog(@"[小杳知] 环境检测: iOS %ld | 液态玻璃: %@ | 屏幕类型: %ld | 低功耗: %@",
-          (long)self.iOSMajorVersion,
-          self.supportsLiquidGlass ? @"✅" : @"模拟",
-          (long)self.displayType,
-          self.isLowPowerMode ? @"是" : @"否");
 }
 
 - (CGFloat)safeAreaBottomInset {
