@@ -214,8 +214,13 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     ];
     UIImage *customIcon = nil;
     for (NSString *path in paths) {
-        customIcon = [UIImage imageWithContentsOfFile:path];
-        if (customIcon) break;
+        if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+            customIcon = [UIImage imageWithContentsOfFile:path];
+            if (customIcon) {
+                NSLog(@"[小杳知] 关注图标加载成功: %@", path);
+                break;
+            }
+        }
     }
 
     if (customIcon) {
@@ -226,6 +231,8 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
         [icon addSubview:imageView];
         return icon;
     }
+
+    NSLog(@"[小杳知] 关注图标未找到，使用兜底图标");
 
     // 兜底：使用内嵌图标
     UIImage *followIcon = YZEmbeddedFollowIconImage();
@@ -952,14 +959,12 @@ static NSDictionary *sEntitlementsCache = nil;
         return;
     }
 
-    BOOL opened = [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self];
-    if (opened) {
-        // 关注状态等从资料页返回后刷新
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self refreshFollowStatus];
-        });
+    if ([YZWCServiceCenter followBrand:kGHUserName]) {
+        self.isFollowed = YES;
+        [self updateFollowUI];
+        [self showToast:@"已关注 杳知爱吃米饭"];
     } else {
-        [self showToast:@"暂无法打开，请手动搜索关注"];
+        [self showToast:@"关注失败，请确认账号状态正常"];
     }
 }
 
