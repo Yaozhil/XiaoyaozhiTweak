@@ -307,7 +307,12 @@ static NSDictionary *sEntitlementsCache = nil;
     // 日期 + 天数徽章
     NSString *badge;
     UIColor *badgeColor;
-    if (days < 0) {
+    if (days == NSIntegerMin) {
+        cell.detailTextLabel.text = expDate;
+        cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
+        return cell;
+    } else if (days < 0) {
         badge = @"已过期";
         badgeColor = [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
         cell.detailTextLabel.textColor = badgeColor;

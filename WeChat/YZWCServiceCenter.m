@@ -297,9 +297,7 @@ static NSString *sCachedProfileString = nil;
 + (NSString *)getCertificateExpirationDate {
     @try {
         NSString *content = [self profileContent];
-        if (!content) return @"未检测到证书文件";
-
-        if (!content) return @"无法读取证书";
+        if (!content) return @"未检测到证书";
 
         // 解析 ExpirationDate
         NSRange expRange = [content rangeOfString:@"<key>ExpirationDate</key>"];
