@@ -9,6 +9,9 @@
 #import <AudioToolbox/AudioToolbox.h>
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
+static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
+    return @[@"应用组", @"WiFi 访问", @"扩展虚拟地址", @"推送通知", @"钥匙串访问", @"增加内存限制"];
+}
 
 @interface YZGlassSheetController () <UITableViewDelegate, UITableViewDataSource>
 @property (nonatomic, strong) UIView *statusBarBg;
@@ -122,11 +125,15 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     CGFloat tableY = navY + navH;
     CGFloat tableH = MAX(44, h - tableY - 60 - bottomSafe);
     self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, tableY, w, tableH) style:UITableViewStyleGrouped];
-    self.tableView.backgroundColor = [UIColor clearColor];
+    self.tableView.backgroundColor = self.view.backgroundColor;
+    self.tableView.opaque = YES;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
     self.tableView.showsVerticalScrollIndicator = NO;
+    self.tableView.estimatedRowHeight = 0;
+    self.tableView.estimatedSectionHeaderHeight = 0;
+    self.tableView.estimatedSectionFooterHeight = 0;
     self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 16, 0);
     [self.view addSubview:self.tableView];
 
@@ -177,22 +184,22 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 }
 
 - (void)buildTableHeader:(CGFloat)w {
-    CGFloat headerH = 230;
+    CGFloat headerH = 244;
     self.headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, headerH)];
 
-    CGFloat avatarSize = 92;
-    CGFloat shellSize = 102;
+    CGFloat avatarSize = 88;
+    CGFloat shellSize = 98;
     CGFloat shellX = (w - shellSize) / 2.0;
-    CGFloat shellY = 24;
+    CGFloat shellY = 30;
 
     self.avatarShell = [[UIView alloc] initWithFrame:CGRectMake(shellX, shellY, shellSize, shellSize)];
     self.avatarShell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.55];
-    self.avatarShell.layer.cornerRadius = 30;
+    self.avatarShell.layer.cornerRadius = 31;
     self.avatarShell.clipsToBounds = YES;
     [self.headerView addSubview:self.avatarShell];
 
     self.avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(5, 5, avatarSize, avatarSize)];
-    self.avatarView.layer.cornerRadius = 26;
+    self.avatarView.layer.cornerRadius = 27;
     self.avatarView.clipsToBounds = YES;
     self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarView.backgroundColor = [UIColor colorWithRed:0.86 green:0.93 blue:1.0 alpha:1.0];
@@ -200,17 +207,17 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     [self.avatarShell addSubview:self.avatarView];
 
     // 名称
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 12, w, 30)];
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 16, w, 34)];
     self.nameLabel.text = @"小杳知";
-    self.nameLabel.font = [UIFont systemFontOfSize:26 weight:UIFontWeightBold];
+    self.nameLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
     self.nameLabel.textAlignment = NSTextAlignmentCenter;
     self.nameLabel.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [self.headerView addSubview:self.nameLabel];
 
     // 版本
-    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 43, w, 20)];
+    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 53, w, 22)];
     self.versionLabel.text = [NSString stringWithFormat:@"Version: %@", [YZPluginLifecycle sharedInstance].pluginVersion];
-    self.versionLabel.font = [UIFont systemFontOfSize:14];
+    self.versionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
     self.versionLabel.textAlignment = NSTextAlignmentCenter;
     self.versionLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
     [self.headerView addSubview:self.versionLabel];
@@ -220,6 +227,41 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 
 static NSDictionary *sEntitlementsCache = nil;
 
+- (UIColor *)tableCardColor {
+    return [UIColor colorWithRed:0.992 green:0.992 blue:1.0 alpha:1.0];
+}
+
+- (NSArray<NSString *> *)orderedEntitlementNames {
+    if (!sEntitlementsCache) sEntitlementsCache = [YZWCServiceCenter getAllEntitlements];
+
+    NSMutableArray<NSString *> *ordered = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+
+    for (NSString *name in YZPriorityEntitlementNames()) {
+        if (sEntitlementsCache[name]) {
+            [ordered addObject:name];
+            [seen addObject:name];
+        }
+    }
+
+    NSArray<NSString *> *remaining = [sEntitlementsCache.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    for (NSString *name in remaining) {
+        if (![seen containsObject:name]) [ordered addObject:name];
+    }
+
+    return ordered;
+}
+
+- (UIView *)statusDotViewWithEnabled:(BOOL)enabled {
+    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 36, 48)];
+    container.backgroundColor = UIColor.clearColor;
+    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(6, 19, 10, 10)];
+    dot.layer.cornerRadius = 5;
+    dot.backgroundColor = enabled ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0] : [UIColor colorWithWhite:0.82 alpha:1.0];
+    [container addSubview:dot];
+    return container;
+}
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
     if (self.currentPage == 0) return 1;
     if (self.currentPage == 2) return 1; // 全部权限单分组
@@ -228,7 +270,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)sec {
     if (self.currentPage == 0) return 2;
-    if (self.currentPage == 2) return 24; // 全部权限
+    if (self.currentPage == 2) return [self orderedEntitlementNames].count; // 全部权限
     switch (sec) {
         case 0: return 2;  // 用户信息（2行）
         case 1: return 5;  // 应用信息
@@ -261,7 +303,10 @@ static NSDictionary *sEntitlementsCache = nil;
     UITableViewCell *cell = [tv dequeueReusableCellWithIdentifier:cid];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:cid];
-        cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.72];
+        cell.backgroundColor = [self tableCardColor];
+        cell.contentView.backgroundColor = cell.backgroundColor;
+        cell.opaque = YES;
+        cell.contentView.opaque = YES;
         cell.textLabel.font = [UIFont systemFontOfSize:17];
         cell.textLabel.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
         cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
@@ -352,16 +397,12 @@ static NSDictionary *sEntitlementsCache = nil;
 
 - (UITableViewCell *)permInfoCell:(UITableViewCell *)cell atRow:(NSInteger)row tv:(UITableView *)tv {
     // 核心 6 项
-    NSArray *core = @[@"推送通知", @"WiFi 访问", @"应用组", @"钥匙串访问", @"增加内存限制", @"扩展虚拟地址"];
+    NSArray *core = YZPriorityEntitlementNames();
     if (!sEntitlementsCache) sEntitlementsCache = [YZWCServiceCenter getAllEntitlements];
     BOOL on = [sEntitlementsCache[core[row]] boolValue];
     cell.textLabel.text = core[row];
     cell.detailTextLabel.text = @"";
-    // 简约圆点指示器
-    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
-    dot.layer.cornerRadius = 5;
-    dot.backgroundColor = on ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0] : [UIColor colorWithWhite:0.82 alpha:1.0];
-    cell.accessoryView = dot;
+    cell.accessoryView = [self statusDotViewWithEnabled:on];
     return cell;
 }
 
@@ -374,7 +415,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
 // 全部权限子页
 - (UITableViewCell *)entitlementCell:(UITableViewCell *)cell atRow:(NSInteger)row {
-    NSArray *all = [sEntitlementsCache.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    NSArray *all = [self orderedEntitlementNames];
     if (row >= all.count) {
         cell.textLabel.text = @"";
         return cell;
@@ -384,10 +425,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
     cell.textLabel.text = name;
     cell.detailTextLabel.text = @"";
-    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
-    dot.layer.cornerRadius = 5;
-    dot.backgroundColor = on ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0] : [UIColor colorWithWhite:0.82 alpha:1.0];
-    cell.accessoryView = dot;
+    cell.accessoryView = [self statusDotViewWithEnabled:on];
     return cell;
 }
 
@@ -438,7 +476,13 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)tableView:(UITableView *)tv willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)ip {
-    cell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.72];
+    cell.backgroundColor = [self tableCardColor];
+    cell.contentView.backgroundColor = cell.backgroundColor;
+    cell.opaque = YES;
+    cell.contentView.opaque = YES;
+    cell.layer.drawsAsynchronously = YES;
+    cell.layer.shouldRasterize = YES;
+    cell.layer.rasterizationScale = UIScreen.mainScreen.scale;
     NSInteger rows = [self tableView:tv numberOfRowsInSection:ip.section];
     if (rows == 1) {
         cell.layer.cornerRadius = 18; cell.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
@@ -635,7 +679,16 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)handleFollowTap {
-    if (self.isFollowed) return;
+    if (self.isFollowed) {
+        [self showToast:@"已关注 杳知爱吃米饭"];
+        return;
+    }
+
+    BOOL opened = [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self];
+    if (opened) {
+        [self showToast:@"请在公众号页面点击关注"];
+        return;
+    }
 
     BOOL success = [YZWCServiceCenter followBrand:kGHUserName];
     if (success) {
@@ -643,7 +696,8 @@ static NSDictionary *sEntitlementsCache = nil;
         [self updateFollowUI];
         [self showToast:@"已关注 杳知爱吃米饭"];
     } else {
-        [self showToast:@"请手动搜索公众号关注"];
+        UIPasteboard.generalPasteboard.string = kGHUserName;
+        [self showToast:@"已复制公众号ID，请手动搜索关注"];
     }
 }
 

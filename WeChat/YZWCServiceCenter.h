@@ -22,6 +22,9 @@
 /// 关注公众号
 + (BOOL)followBrand:(NSString *)brandUserName;
 
+/// 打开公众号资料页，供用户手动关注
++ (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController;
+
 /// 获取当前登录用户的微信头像（UIImage）
 + (UIImage *)getSelfAvatar;
 
