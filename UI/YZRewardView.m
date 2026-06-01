@@ -48,18 +48,15 @@ static NSString *sCachedRewardURL = nil;
 
 + (UIViewController *)topMostViewController {
     UIWindow *keyWindow = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
-                for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-                    if (w.isKeyWindow) { keyWindow = w; break; }
-                }
-                if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-                break;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
+            for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                if (w.isKeyWindow) { keyWindow = w; break; }
             }
+            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+            break;
         }
     }
-    if (!keyWindow) keyWindow = UIApplication.sharedApplication.keyWindow;
     UIViewController *root = keyWindow.rootViewController;
     while (root.presentedViewController) root = root.presentedViewController;
     return root;
