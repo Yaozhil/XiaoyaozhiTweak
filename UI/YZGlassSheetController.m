@@ -7,6 +7,7 @@
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
 #import <AudioToolbox/AudioToolbox.h>
+#import <QuartzCore/QuartzCore.h>
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
@@ -184,22 +185,22 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 }
 
 - (void)buildTableHeader:(CGFloat)w {
-    CGFloat headerH = 244;
+    CGFloat headerH = 238;
     self.headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, headerH)];
 
-    CGFloat avatarSize = 88;
-    CGFloat shellSize = 98;
+    CGFloat avatarSize = 78;
+    CGFloat shellSize = 88;
     CGFloat shellX = (w - shellSize) / 2.0;
-    CGFloat shellY = 30;
+    CGFloat shellY = 31;
 
     self.avatarShell = [[UIView alloc] initWithFrame:CGRectMake(shellX, shellY, shellSize, shellSize)];
     self.avatarShell.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.55];
-    self.avatarShell.layer.cornerRadius = 31;
+    self.avatarShell.layer.cornerRadius = 26;
     self.avatarShell.clipsToBounds = YES;
     [self.headerView addSubview:self.avatarShell];
 
     self.avatarView = [[UIImageView alloc] initWithFrame:CGRectMake(5, 5, avatarSize, avatarSize)];
-    self.avatarView.layer.cornerRadius = 27;
+    self.avatarView.layer.cornerRadius = 22;
     self.avatarView.clipsToBounds = YES;
     self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarView.backgroundColor = [UIColor colorWithRed:0.86 green:0.93 blue:1.0 alpha:1.0];
@@ -207,7 +208,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.avatarShell addSubview:self.avatarView];
 
     // 名称
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 16, w, 34)];
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 17, w, 34)];
     self.nameLabel.text = @"小杳知";
     self.nameLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
     self.nameLabel.textAlignment = NSTextAlignmentCenter;
@@ -215,7 +216,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.headerView addSubview:self.nameLabel];
 
     // 版本
-    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 53, w, 22)];
+    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 54, w, 22)];
     self.versionLabel.text = [NSString stringWithFormat:@"Version: %@", [YZPluginLifecycle sharedInstance].pluginVersion];
     self.versionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
     self.versionLabel.textAlignment = NSTextAlignmentCenter;
@@ -255,9 +256,33 @@ static NSDictionary *sEntitlementsCache = nil;
 - (UIView *)statusDotViewWithEnabled:(BOOL)enabled {
     UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 36, 48)];
     container.backgroundColor = UIColor.clearColor;
+    UIColor *green = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
+
+    if (enabled) {
+        UIView *halo = [[UIView alloc] initWithFrame:CGRectMake(1, 14, 20, 20)];
+        halo.layer.cornerRadius = 10;
+        halo.backgroundColor = [green colorWithAlphaComponent:0.18];
+        [container addSubview:halo];
+
+        CAKeyframeAnimation *scale = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
+        scale.values = @[@0.72, @1.28, @0.72];
+        scale.keyTimes = @[@0, @0.56, @1];
+
+        CAKeyframeAnimation *opacity = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
+        opacity.values = @[@0.05, @0.34, @0.05];
+        opacity.keyTimes = scale.keyTimes;
+
+        CAAnimationGroup *group = [CAAnimationGroup animation];
+        group.animations = @[scale, opacity];
+        group.duration = 1.45;
+        group.repeatCount = HUGE_VALF;
+        group.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        [halo.layer addAnimation:group forKey:@"yz.pulse"];
+    }
+
     UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(6, 19, 10, 10)];
     dot.layer.cornerRadius = 5;
-    dot.backgroundColor = enabled ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0] : [UIColor colorWithWhite:0.82 alpha:1.0];
+    dot.backgroundColor = enabled ? green : [UIColor colorWithWhite:0.82 alpha:1.0];
     [container addSubview:dot];
     return container;
 }
@@ -317,10 +342,14 @@ static NSDictionary *sEntitlementsCache = nil;
         selectedBackgroundView.backgroundColor = [self tableCardColor];
         cell.selectedBackgroundView = selectedBackgroundView;
     }
+    cell.indentationLevel = 0;
+    cell.indentationWidth = 0;
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
-        cell.textLabel.text = ip.row == 0 ? @"👤  账户信息" : @"⚡  常用功能";
+        cell.textLabel.text = ip.row == 0 ? @"账户信息" : @"常用功能";
+        cell.indentationLevel = 1;
+        cell.indentationWidth = 22;
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
         return cell;
