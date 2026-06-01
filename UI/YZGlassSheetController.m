@@ -9,9 +9,10 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
+#import <CoreImage/CoreImage.h>
+
 extern UIImage *YZEmbeddedDonationImage(void);
 extern UIImage *YZEmbeddedFollowIconImage(void);
-#import "YZRewardView.h"
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 static NSInteger const kYZDonationOverlayTag = 95101;
@@ -208,18 +209,15 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     icon.backgroundColor = UIColor.clearColor;
     icon.clipsToBounds = NO;
 
-    NSArray *paths = @[
-        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
-        @"/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
-    ];
-    UIImage *customIcon = nil;
-    for (NSString *path in paths) {
-        if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    UIImage *customIcon = YZEmbeddedFollowIconImage();
+    if (!customIcon) {
+        NSArray *paths = @[
+            @"/var/jb/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
+            @"/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
+        ];
+        for (NSString *path in paths) {
             customIcon = [UIImage imageWithContentsOfFile:path];
-            if (customIcon) {
-                NSLog(@"[小杳知] 关注图标加载成功: %@", path);
-                break;
-            }
+            if (customIcon) break;
         }
     }
 
@@ -231,8 +229,6 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
         [icon addSubview:imageView];
         return icon;
     }
-
-    NSLog(@"[小杳知] 关注图标未找到，使用兜底图标");
 
     // 兜底：使用内嵌图标
     UIImage *followIcon = YZEmbeddedFollowIconImage();
@@ -581,7 +577,7 @@ static NSDictionary *sEntitlementsCache = nil;
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (self.currentPage == 0) {
         if (ip.row == 0) [self goToAccountInfo];
-        else if (ip.row == 2) [YZRewardView openRewardPage];
+        else if (ip.row == 2) [self showRewardSheet];
         else [self showToast:@"暂未开放"];
         return;
     }
@@ -953,19 +949,72 @@ static NSDictionary *sEntitlementsCache = nil;
     }
 }
 
+- (void)showRewardSheet {
+    [self showToast:@"正在识别赞赏码..."];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        // 从 layout 路径加载赞赏码图片并解码
+        UIImage *image = nil;
+        NSArray *paths = @[
+            @"/var/jb/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
+            @"/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
+        ];
+        for (NSString *path in paths) {
+            image = [UIImage imageWithContentsOfFile:path];
+            if (image) break;
+        }
+
+        NSString *qrURL = nil;
+        if (image) {
+            CIImage *ci = [[CIImage alloc] initWithImage:image];
+            CIDetector *det = [CIDetector detectorOfType:CIDetectorTypeQRCode context:nil options:@{CIDetectorAccuracy: CIDetectorAccuracyHigh}];
+            for (CIQRCodeFeature *f in (NSArray<CIQRCodeFeature *> *)[det featuresInImage:ci]) {
+                if (f.messageString.length > 0) { qrURL = f.messageString; break; }
+            }
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (qrURL.length > 0) {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"投喂作者"
+                                                                               message:@"将打开微信打赏页面"
+                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+                [alert addAction:[UIAlertAction actionWithTitle:@"打开" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+                    [[UIApplication sharedApplication] openURL:[NSURL URLWithString:qrURL] options:@{} completionHandler:nil];
+                }]];
+                [self presentViewController:alert animated:YES completion:nil];
+            } else {
+                UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"赞赏码未识别"
+                                                                               message:@"请长按下方赞赏码图片保存到相册，\n然后使用微信扫一扫识别"
+                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"好的" style:UIAlertActionStyleDefault handler:nil]];
+                [self presentViewController:alert animated:YES completion:nil];
+            }
+        });
+    });
+}
+
 - (void)handleFollowTap {
     if (self.isFollowed) {
         [self showToast:@"已关注 杳知爱吃米饭"];
         return;
     }
 
-    if ([YZWCServiceCenter followBrand:kGHUserName]) {
-        self.isFollowed = YES;
-        [self updateFollowUI];
-        [self showToast:@"已关注 杳知爱吃米饭"];
-    } else {
-        [self showToast:@"关注失败，请确认账号状态正常"];
-    }
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"关注公众号"
+                                                                   message:@"杳知爱吃米饭\n\n点击关注即可收到最新推送"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关注" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        if ([YZWCServiceCenter followBrand:kGHUserName]) {
+            self.isFollowed = YES;
+            [self updateFollowUI];
+            [self showToast:@"已关注 杳知爱吃米饭"];
+        } else {
+            UIPasteboard.generalPasteboard.string = kGHUserName;
+            [self showToast:@"请手动搜索关注 gh_5a0621af5c7d"];
+        }
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showToast:(NSString *)msg {
