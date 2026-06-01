@@ -52,6 +52,8 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self configureHostNavigation];
+    [self updateBackButtonVisibility];
     if (!self.isPresented) {
         self.isPresented = YES;
     }
@@ -84,7 +86,7 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     self.backButton.titleLabel.font = [UIFont systemFontOfSize:32 weight:UIFontWeightLight];
     self.backButton.tintColor = [UIColor colorWithRed:0 green:0.478 blue:1.0 alpha:1.0];
     [self.backButton addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
-    self.backButton.hidden = YES;
+    self.backButton.hidden = ![self shouldShowRootBackButton];
     [self.navBar addSubview:self.backButton];
 
     self.navTitle = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, w - 120, navH)];
@@ -435,10 +437,24 @@ static NSDictionary *sEntitlementsCache = nil;
 
 #pragma mark - Navigation
 
+- (void)configureHostNavigation {
+    self.navigationItem.leftBarButtonItem = nil;
+    [self.navigationItem setHidesBackButton:YES animated:NO];
+}
+
+- (BOOL)shouldShowRootBackButton {
+    UINavigationController *navigationController = self.navigationController;
+    return navigationController && navigationController.viewControllers.firstObject != self;
+}
+
+- (void)updateBackButtonVisibility {
+    self.backButton.hidden = (self.currentPage == 0 && ![self shouldShowRootBackButton]);
+}
+
 - (void)goToAccountInfo {
     self.currentPage = 1;
     sEntitlementsCache = nil; // 刷新缓存
-    self.backButton.hidden = NO;
+    [self updateBackButtonVisibility];
     self.navTitle.hidden = NO;
     self.navTitle.text = @"账户信息";
     self.infoButton.hidden = YES;
@@ -458,10 +474,12 @@ static NSDictionary *sEntitlementsCache = nil;
         [self.tableView reloadData];
     } else if (self.currentPage == 1) {
         self.currentPage = 0;
-        self.backButton.hidden = YES;
+        [self updateBackButtonVisibility];
         self.navTitle.hidden = YES;
         self.infoButton.hidden = NO;
         [self.tableView reloadData];
+    } else if (self.currentPage == 0 && [self shouldShowRootBackButton]) {
+        [self.navigationController popViewControllerAnimated:YES];
     }
 }
 

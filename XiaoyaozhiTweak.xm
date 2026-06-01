@@ -434,20 +434,6 @@ static void YZScheduleMaoPluginCollectorRetry(void) {
     });
 }
 
-static void YZRegisterMaoPluginSwitchIfAvailable(id manager) {
-    SEL switchSelector = NSSelectorFromString(@"registerSwitchWithTitle:key:");
-    if (!manager || ![manager respondsToSelector:switchSelector]) return;
-
-    @try {
-        ((void (*)(id, SEL, NSString *, NSString *))objc_msgSend)(manager,
-                                                                  switchSelector,
-                                                                  @"小杳知",
-                                                                  @"plugin_active");
-    } @catch (__unused NSException *exception) {
-        return;
-    }
-}
-
 static void YZRegisterWithMaoPluginCollector(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gYZMaoPluginRegistered) return;
@@ -462,7 +448,6 @@ static void YZRegisterWithMaoPluginCollector(void) {
                                                                                   title,
                                                                                   version,
                                                                                   kYZMaoPluginControllerClassName);
-            YZRegisterMaoPluginSwitchIfAvailable(manager);
             gYZMaoPluginRegistered = YES;
             gYZMaoPluginRegisterRetryScheduled = NO;
             gYZMaoPluginRegisterAttempts = 0;

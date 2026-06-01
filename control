@@ -1,6 +1,6 @@
 Package: com.rouneed.xiaoyaozhi
 Name: 小杳知
-Version: 1.0.8
+Version: 1.0.9
 Architecture: iphoneos-arm64
 Description: 基于 iOS 26 液态风格的微信增强插件，集成老猫插件管理框架
 Maintainer: Rouneed

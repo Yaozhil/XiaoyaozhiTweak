@@ -17,9 +17,6 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 - (BOOL)storedPluginActive {
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
     id savedActive = [defaults objectForKey:@"plugin_active"];
-    if (!savedActive) {
-        savedActive = [NSUserDefaults.standardUserDefaults objectForKey:@"plugin_active"];
-    }
     return savedActive ? [savedActive boolValue] : YES;
 }
 
@@ -46,7 +43,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 }
 
 - (NSString *)pluginVersion {
-    return @"1.0.8";
+    return @"1.0.9";
 }
 
 - (NSString *)pluginDisplayName {
@@ -108,9 +105,6 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
     [defaults setBool:active forKey:@"plugin_active"];
     [defaults synchronize];
-
-    [NSUserDefaults.standardUserDefaults setBool:active forKey:@"plugin_active"];
-    [NSUserDefaults.standardUserDefaults synchronize];
 }
 
 - (UIViewController *)settingsViewController {
