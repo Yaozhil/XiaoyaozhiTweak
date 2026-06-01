@@ -444,6 +444,10 @@
             <span class="row-label">常用功能</span>
             <div class="row-arrow"></div>
           </div>
+          <div class="row" onclick="handleReward()">
+            <span class="row-label">投喂一下</span>
+            <div class="row-arrow"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -584,11 +588,22 @@
   updateFollowUI();
 
   function handleFollow() {
-    if (isFollowed) return;
-    isFollowed = true;
-    updateFollowUI();
-    showToast('已关注 杳知爱吃米饭');
-    copyGH();
+    // 模拟跳转微信公众号关注界面
+    showToast('正在打开公众号...');
+    const ghUrl = 'weixin://dl/business/?t=' + labelGH;
+    setTimeout(() => {
+      isFollowed = true;
+      updateFollowUI();
+      showToast('已关注 杳知爱吃米饭');
+    }, 800);
+    // 实际环境中: location.href = ghUrl 会调起微信
+    try { window.open(ghUrl, '_blank'); } catch(e) {}
+  }
+
+  function handleReward() {
+    // 模拟：解码赞赏码 → 跳转微信打赏页面
+    showToast('正在跳转微信打赏页...');
+    // 实际环境中会解码 QR → openURL → 微信打赏金额选择页
   }
 
   // ====== 权限模拟（预览环境用） ======
