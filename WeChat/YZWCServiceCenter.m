@@ -65,18 +65,6 @@ static id YZValueForAnyKey(id target, NSArray<NSString *> *keys) {
     return nil;
 }
 
-static BOOL YZSetValueForAnyKey(id target, id value, NSArray<NSString *> *keys) {
-    if (!target || !value) return NO;
-    for (NSString *key in keys) {
-        @try {
-            [target setValue:value forKey:key];
-            return YES;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-    return NO;
-}
-
 static BOOL YZLooksLikeAvatarImage(UIImage *image) {
     if (!image) return NO;
     CGSize size = image.size;
@@ -268,63 +256,31 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
-    if (brandUserName.length == 0 || !viewController) return NO;
+    if (brandUserName.length == 0) return NO;
 
     @try {
-        Class contactInfoClass = NSClassFromString(@"ContactInfoViewController");
-        if (!contactInfoClass) contactInfoClass = NSClassFromString(@"ContactInfoViewController_New");
-        if (!contactInfoClass) return NO;
+        NSString *escaped = [brandUserName stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
+        if (escaped.length == 0) return NO;
 
-        UIViewController *profileController = [[contactInfoClass alloc] init];
-        id contact = nil;
-        id contactMgr = [self getContactManager];
-        SEL getContactSel = NSSelectorFromString(@"getContactByName:");
-        if (contactMgr && [contactMgr respondsToSelector:getContactSel]) {
-            contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, getContactSel, brandUserName);
-        }
+        NSArray<NSString *> *urlStrings = @[
+            [NSString stringWithFormat:@"weixin://dl/business/?t=%@", escaped]
+        ];
 
-        if (!contact) {
-            Class contactClass = NSClassFromString(@"CContact");
-            if (contactClass) {
-                contact = [[contactClass alloc] init];
-                YZSetValueForAnyKey(contact, brandUserName, @[@"m_nsUsrName", @"m_nsUsername", @"username", @"userName"]);
+        UIApplication *application = UIApplication.sharedApplication;
+        for (NSString *urlString in urlStrings) {
+            NSURL *url = [NSURL URLWithString:urlString];
+            if (!url) continue;
+            if (![application canOpenURL:url]) continue;
+
+            if (@available(iOS 10.0, *)) {
+                [application openURL:url options:@{} completionHandler:nil];
+            } else {
+                [application openURL:url];
             }
+            return YES;
         }
 
-        if (contact) {
-            BOOL assigned = NO;
-            NSArray<NSString *> *contactSelectors = @[
-                @"setM_contact:",
-                @"setM_contactInfo:",
-                @"setContact:",
-                @"setMContact:",
-                @"setContactInfo:",
-                @"setContactFrom:"
-            ];
-            for (NSString *selectorName in contactSelectors) {
-                SEL selector = NSSelectorFromString(selectorName);
-                if ([profileController respondsToSelector:selector]) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(profileController, selector, contact);
-                    assigned = YES;
-                    break;
-                }
-            }
-            if (!assigned) {
-                YZSetValueForAnyKey(profileController, contact, @[@"m_contact", @"m_contactInfo", @"contact", @"contactInfo"]);
-            }
-        }
-
-        YZSetValueForAnyKey(profileController, brandUserName, @[@"m_nsUsrName", @"m_nsUsername", @"username", @"userName", @"brandUserName"]);
-        YZSetValueForAnyKey(profileController, @(3), @[@"m_uiFromScene", @"fromScene", @"scene"]);
-
-        UINavigationController *navigationController = viewController.navigationController;
-        if (navigationController) {
-            [navigationController pushViewController:profileController animated:YES];
-        } else {
-            UINavigationController *wrapper = [[UINavigationController alloc] initWithRootViewController:profileController];
-            [viewController presentViewController:wrapper animated:YES completion:nil];
-        }
-        return YES;
+        return NO;
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"openBrandProfile"];
         return NO;

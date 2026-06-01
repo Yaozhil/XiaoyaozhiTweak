@@ -229,7 +229,15 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 static NSDictionary *sEntitlementsCache = nil;
 
 - (UIColor *)tableCardColor {
-    return [UIColor colorWithRed:0.992 green:0.992 blue:1.0 alpha:1.0];
+    return [UIColor colorWithRed:0.988 green:0.990 blue:1.0 alpha:1.0];
+}
+
+- (UIColor *)certificateBadgeColorForRemainingDays:(NSInteger)days {
+    if (days == NSIntegerMin) return [UIColor colorWithWhite:0.56 alpha:1.0];
+    if (days < 0) return [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
+    if (days <= 7) return [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
+    if (days <= 30) return [UIColor colorWithRed:1.0 green:0.58 blue:0.0 alpha:1.0];
+    return [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
 }
 
 - (NSArray<NSString *> *)orderedEntitlementNames {
@@ -344,12 +352,14 @@ static NSDictionary *sEntitlementsCache = nil;
     }
     cell.indentationLevel = 0;
     cell.indentationWidth = 0;
+    cell.textLabel.attributedText = nil;
+    cell.detailTextLabel.attributedText = nil;
+    cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
         cell.textLabel.text = ip.row == 0 ? @"账户信息" : @"常用功能";
-        cell.indentationLevel = 1;
-        cell.indentationWidth = 22;
+        cell.textLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
         return cell;
@@ -362,6 +372,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
     // ====== 账户信息页 ======
     cell.accessoryView = nil;
+    cell.textLabel.font = [UIFont systemFontOfSize:17];
     cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
 
     switch (ip.section) {
@@ -401,7 +412,6 @@ static NSDictionary *sEntitlementsCache = nil;
 
     // 日期 + 天数徽章
     NSString *badge;
-    UIColor *badgeColor;
     if (days == NSIntegerMin) {
         cell.detailTextLabel.text = expDate;
         cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
@@ -409,19 +419,23 @@ static NSDictionary *sEntitlementsCache = nil;
         return cell;
     } else if (days < 0) {
         badge = @"已过期";
-        badgeColor = [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
-        cell.detailTextLabel.textColor = badgeColor;
     } else {
         badge = [NSString stringWithFormat:@"剩余 %ld天", (long)days];
-        if (days <= 30) {
-            badgeColor = [UIColor colorWithRed:1.0 green:0.58 blue:0.0 alpha:1.0];
-        } else {
-            badgeColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
-        }
-        cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
     }
 
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  ·  %@", expDate, badge];
+    NSString *detail = [NSString stringWithFormat:@"%@  ·  %@", expDate, badge];
+    NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:detail attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:15 weight:UIFontWeightRegular],
+        NSForegroundColorAttributeName: [UIColor colorWithWhite:0.56 alpha:1.0]
+    }];
+    NSRange badgeRange = [detail rangeOfString:badge];
+    if (badgeRange.location != NSNotFound) {
+        [attributed addAttributes:@{
+            NSFontAttributeName: [UIFont systemFontOfSize:15 weight:UIFontWeightMedium],
+            NSForegroundColorAttributeName: [self certificateBadgeColorForRemainingDays:days]
+        } range:badgeRange];
+    }
+    cell.detailTextLabel.attributedText = attributed;
     cell.detailTextLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
 
     return cell;
@@ -520,6 +534,8 @@ static NSDictionary *sEntitlementsCache = nil;
     cell.contentView.opaque = YES;
     cell.layer.drawsAsynchronously = YES;
     cell.layer.shouldRasterize = NO;
+    cell.layer.borderWidth = 0.5;
+    cell.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.82].CGColor;
     NSInteger rows = [self tableView:tv numberOfRowsInSection:ip.section];
     if (rows == 1) {
         cell.layer.cornerRadius = 18; cell.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
@@ -723,7 +739,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
     BOOL opened = [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self];
     if (opened) {
-        [self showToast:@"请在公众号页面点击关注"];
+        [self showToast:@"正在打开公众号页面"];
         return;
     }
 
