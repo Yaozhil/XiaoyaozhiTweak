@@ -154,11 +154,8 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
     self.followStatusLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
     [self.followCard addSubview:self.followStatusLabel];
 
-    UIImageView *arrow = [[UIImageView alloc] initWithFrame:CGRectMake(cardW - 26, 18, 12, 12)];
-    arrow.backgroundColor = [UIColor clearColor];
-    UIView *a1 = [[UIView alloc] initWithFrame:CGRectMake(4, 0, 1.5, 12)]; a1.backgroundColor = [UIColor colorWithWhite:0.78 alpha:1.0]; [arrow addSubview:a1];
-    UIView *a2 = [[UIView alloc] initWithFrame:CGRectMake(0, 4, 12, 1.5)]; a2.backgroundColor = [UIColor colorWithWhite:0.78 alpha:1.0]; [arrow addSubview:a2];
-    arrow.transform = CGAffineTransformMakeRotation(M_PI_4 * 0.5);
+    UIView *arrow = [self arrowView];
+    arrow.frame = CGRectMake(cardW - 26, 16, 12, 16);
     [self.followCard addSubview:arrow];
 }
 
@@ -373,11 +370,22 @@ static NSDictionary *sEntitlementsCache = nil;
 #pragma mark - Arrow / Selection
 
 - (UIView *)arrowView {
-    UIImageView *a = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 12, 12)];
-    UIView *v1 = [[UIView alloc] initWithFrame:CGRectMake(3, 0, 1.5, 12)]; v1.backgroundColor = [UIColor colorWithWhite:0.78 alpha:1.0]; [a addSubview:v1];
-    UIView *v2 = [[UIView alloc] initWithFrame:CGRectMake(0, 3, 12, 1.5)]; v2.backgroundColor = [UIColor colorWithWhite:0.78 alpha:1.0]; [a addSubview:v2];
-    a.transform = CGAffineTransformMakeRotation(M_PI_4 * 1.5);
-    return a;
+    UIColor *muted = [UIColor colorWithWhite:0.72 alpha:1.0];
+    if (@available(iOS 13.0, *)) {
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
+        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 12, 16)];
+        imageView.contentMode = UIViewContentModeScaleAspectFit;
+        imageView.tintColor = muted;
+        imageView.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:config];
+        return imageView;
+    }
+
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 12, 16)];
+    label.text = @"›";
+    label.font = [UIFont systemFontOfSize:22 weight:UIFontWeightRegular];
+    label.textColor = muted;
+    label.textAlignment = NSTextAlignmentCenter;
+    return label;
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
