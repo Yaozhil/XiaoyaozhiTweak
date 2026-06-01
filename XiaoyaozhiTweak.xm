@@ -33,16 +33,23 @@ static NSString *const kYZAlertButtonText = @"已知晓";
 static NSString *const kYZAlertCancelText = @"请先阅读";
 static NSString *const kYZOfficialAccountID = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountName = @"杳知爱吃米饭";
+static NSString *const kYZMaoPluginManagerClassName = @"WCPluginsMgr";
+static NSString *const kYZMaoPluginControllerClassName = @"YZGlassSheetController";
 static NSTimeInterval const kYZInitialAlertDelaySeconds = 2.0;
 static NSTimeInterval const kYZRetryAlertDelaySeconds = 0.7;
+static NSTimeInterval const kYZMaoPluginRegisterRetryDelay = 1.0;
 static NSInteger const kYZMaxAlertPresentAttempts = 8;
 static NSInteger const kYZCountdownSeconds = 5;
+static NSInteger const kYZMaoPluginRegisterMaxAttempts = 8;
 static BOOL gYZIsPluginLoaded = NO;
 static YZGlassSheetController *gSheetController = nil;
 static BOOL gYZAlertScheduled = NO;
 static BOOL gYZAlertPresenting = NO;
 static BOOL gYZCountdownCancelled = NO;
+static BOOL gYZMaoPluginRegistered = NO;
+static BOOL gYZMaoPluginRegisterRetryScheduled = NO;
 static NSInteger gYZAlertPresentAttempts = 0;
+static NSInteger gYZMaoPluginRegisterAttempts = 0;
 static id gYZBecomeActiveToken = nil;
 static id gYZDidLoadToken = nil;
 static id gYZWillUnloadToken = nil;
@@ -395,6 +402,43 @@ static void YZScheduleAlertAfterActivation(void) {
     YZScheduleAlertAfterDelay(kYZInitialAlertDelaySeconds);
 }
 
+static void YZRegisterWithMaoPluginCollector(void) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (gYZMaoPluginRegistered) return;
+
+        Class managerClass = NSClassFromString(kYZMaoPluginManagerClassName);
+        SEL registerSelector = NSSelectorFromString(@"registerControllerWithTitle:version:controller:");
+        if (managerClass && [managerClass respondsToSelector:registerSelector]) {
+            NSString *title = [[YZPluginLifecycle sharedInstance] pluginDisplayName] ?: @"小杳知";
+            NSString *version = [[YZPluginLifecycle sharedInstance] pluginVersion] ?: @"";
+            ((void (*)(Class, SEL, NSString *, NSString *, NSString *))objc_msgSend)(managerClass,
+                                                                                     registerSelector,
+                                                                                     title,
+                                                                                     version,
+                                                                                     kYZMaoPluginControllerClassName);
+            gYZMaoPluginRegistered = YES;
+            gYZMaoPluginRegisterRetryScheduled = NO;
+            NSLog(@"[小杳知] 已注册到老猫微信插件管理: %@ %@", title, version);
+            return;
+        }
+
+        if (gYZMaoPluginRegisterRetryScheduled || gYZMaoPluginRegisterAttempts >= kYZMaoPluginRegisterMaxAttempts) {
+            if (gYZMaoPluginRegisterAttempts == kYZMaoPluginRegisterMaxAttempts) {
+                NSLog(@"[小杳知] 未检测到 WCPluginsMgr，跳过老猫收纳注册");
+                gYZMaoPluginRegisterAttempts += 1;
+            }
+            return;
+        }
+
+        gYZMaoPluginRegisterAttempts += 1;
+        gYZMaoPluginRegisterRetryScheduled = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kYZMaoPluginRegisterRetryDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            gYZMaoPluginRegisterRetryScheduled = NO;
+            YZRegisterWithMaoPluginCollector();
+        });
+    });
+}
+
 // ============================================================
 // MARK: - 插件初始化
 // ============================================================
@@ -438,6 +482,7 @@ static void YZXiaoyaozhiInit(void) {
 
             // 注册到老猫的插件管理
             [[YZPluginLifecycle sharedInstance] registerWithManager:@"老猫的插件管理"];
+            YZRegisterWithMaoPluginCollector();
 
             // 监听（保存 token 以便卸载时移除）
             NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
@@ -445,6 +490,7 @@ static void YZXiaoyaozhiInit(void) {
             gYZBecomeActiveToken = [nc addObserverForName:UIApplicationDidBecomeActiveNotification
                                                     object:nil queue:[NSOperationQueue mainQueue]
                                                 usingBlock:^(__unused NSNotification *note) {
+                YZRegisterWithMaoPluginCollector();
                 YZScheduleAlertAfterActivation();
             }];
 
@@ -500,6 +546,7 @@ static void YZXiaoyaozhiInit(void) {
 
     if (![[YZPluginLifecycle sharedInstance] isPluginActive]) return;
 
+    YZRegisterWithMaoPluginCollector();
     YZScheduleAlertAfterActivation();
 }
 
