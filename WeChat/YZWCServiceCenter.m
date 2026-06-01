@@ -270,13 +270,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         for (NSString *urlString in urlStrings) {
             NSURL *url = [NSURL URLWithString:urlString];
             if (!url) continue;
-            if (![application canOpenURL:url]) continue;
 
-            if (@available(iOS 10.0, *)) {
-                [application openURL:url options:@{} completionHandler:nil];
-            } else {
-                [application openURL:url];
-            }
+            [application openURL:url options:@{} completionHandler:nil];
             return YES;
         }
 

@@ -10,6 +10,8 @@
 #import <QuartzCore/QuartzCore.h>
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
+static NSInteger const kYZDonationOverlayTag = 95101;
+static NSInteger const kYZDonationCardTag = 95102;
 static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     return @[@"应用组", @"WiFi 访问", @"扩展虚拟地址", @"推送通知", @"钥匙串访问", @"增加内存限制"];
 }
@@ -302,7 +304,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)sec {
-    if (self.currentPage == 0) return 2;
+    if (self.currentPage == 0) return 3;
     if (self.currentPage == 2) return [self orderedEntitlementNames].count; // 全部权限
     switch (sec) {
         case 0: return 2;  // 用户信息（2行）
@@ -358,7 +360,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
-        cell.textLabel.text = ip.row == 0 ? @"账户信息" : @"常用功能";
+        cell.textLabel.text = @[@"账户信息", @"常用功能", @"投喂一下"][ip.row];
         cell.textLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
@@ -506,6 +508,7 @@ static NSDictionary *sEntitlementsCache = nil;
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (self.currentPage == 0) {
         if (ip.row == 0) [self goToAccountInfo];
+        else if (ip.row == 2) [self showDonationSheet];
         else [self showToast:@"暂未开放"];
         return;
     }
@@ -649,6 +652,115 @@ static NSDictionary *sEntitlementsCache = nil;
     }
 }
 
+#pragma mark - Donation
+
+- (UIImage *)donationImage {
+    NSArray<NSString *> *paths = @[
+        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
+        @"/Library/Application Support/XiaoyaozhiTweak/donation.png"
+    ];
+
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    for (NSString *path in paths) {
+        if ([fileManager fileExistsAtPath:path]) {
+            UIImage *image = [UIImage imageWithContentsOfFile:path];
+            if (image) return image;
+        }
+    }
+
+    return nil;
+}
+
+- (void)dismissDonationSheet {
+    UIView *overlay = [self.view viewWithTag:kYZDonationOverlayTag];
+    [UIView animateWithDuration:0.20 animations:^{
+        overlay.alpha = 0;
+    } completion:^(BOOL finished) {
+        [overlay removeFromSuperview];
+    }];
+}
+
+- (void)handleDonationOverlayTap:(UITapGestureRecognizer *)gesture {
+    UIView *overlay = gesture.view;
+    UIView *card = [overlay viewWithTag:kYZDonationCardTag];
+    CGPoint location = [gesture locationInView:overlay];
+    if (card && CGRectContainsPoint(card.frame, location)) return;
+    [self dismissDonationSheet];
+}
+
+- (void)showDonationSheet {
+    if ([self.view viewWithTag:kYZDonationOverlayTag]) return;
+
+    UIImage *donationImage = [self donationImage];
+    if (!donationImage) {
+        [self showToast:@"未找到赞赏码资源"];
+        return;
+    }
+
+    UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
+    overlay.tag = kYZDonationOverlayTag;
+    overlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.22];
+    overlay.alpha = 0;
+    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:overlay];
+
+    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleDonationOverlayTap:)];
+    [overlay addGestureRecognizer:tap];
+
+    CGFloat width = MIN(self.view.bounds.size.width - 48, 330);
+    CGFloat imageSize = width - 44;
+    CGFloat cardHeight = imageSize + 114;
+    UIView *card = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - width) / 2.0,
+                                                            (self.view.bounds.size.height - cardHeight) / 2.0,
+                                                            width,
+                                                            cardHeight)];
+    card.tag = kYZDonationCardTag;
+    card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.96];
+    card.layer.cornerRadius = 26;
+    card.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.18].CGColor;
+    card.layer.shadowOpacity = 1;
+    card.layer.shadowRadius = 28;
+    card.layer.shadowOffset = CGSizeMake(0, 12);
+    card.clipsToBounds = NO;
+    [overlay addSubview:card];
+
+    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0, 20, width, 24)];
+    title.text = @"投喂一下";
+    title.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
+    title.textAlignment = NSTextAlignmentCenter;
+    title.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
+    [card addSubview:title];
+
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(22, 58, imageSize, imageSize)];
+    imageView.image = donationImage;
+    imageView.contentMode = UIViewContentModeScaleAspectFit;
+    imageView.backgroundColor = UIColor.whiteColor;
+    imageView.layer.cornerRadius = 18;
+    imageView.clipsToBounds = YES;
+    [card addSubview:imageView];
+
+    UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 44, width - 40, 20)];
+    subtitle.text = @"感谢支持小杳知～";
+    subtitle.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
+    subtitle.textAlignment = NSTextAlignmentCenter;
+    subtitle.textColor = [UIColor colorWithWhite:0.48 alpha:1.0];
+    [card addSubview:subtitle];
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.frame = CGRectMake(width - 44, 10, 34, 34);
+    [close setTitle:@"×" forState:UIControlStateNormal];
+    close.titleLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightRegular];
+    close.tintColor = [UIColor colorWithWhite:0.60 alpha:1.0];
+    [close addTarget:self action:@selector(dismissDonationSheet) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:close];
+
+    card.transform = CGAffineTransformMakeScale(0.96, 0.96);
+    [UIView animateWithDuration:0.24 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+        overlay.alpha = 1;
+        card.transform = CGAffineTransformIdentity;
+    } completion:nil];
+}
+
 #pragma mark - Follow
 
 - (BOOL)isCandidateAvatarImageView:(UIImageView *)imageView {
@@ -657,7 +769,7 @@ static NSDictionary *sEntitlementsCache = nil;
     CGRect bounds = imageView.bounds;
     CGFloat minSide = MIN(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
     CGFloat maxSide = MAX(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
-    if (minSide < 44 || maxSide > 140) return NO;
+    if (minSide < 58 || maxSide > 132) return NO;
 
     CGSize imageSize = imageView.image.size;
     if (imageSize.width < 36 || imageSize.height < 36) return NO;
@@ -698,14 +810,6 @@ static NSDictionary *sEntitlementsCache = nil;
         if (candidate) bestImage = candidate;
     }
 
-    if (!bestImage) {
-        for (UIWindow *window in UIApplication.sharedApplication.windows) {
-            UIImage *candidate = [self avatarFromViewHierarchy:window bestSide:&bestSide];
-            if (candidate) bestImage = candidate;
-        }
-    }
-
-    if (bestImage) [YZWCServiceCenter rememberPossibleSelfAvatar:bestImage];
     return bestImage;
 }
 
@@ -819,10 +923,9 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)refreshAvatar {
-    UIImage *localAvatar = self.appIcon ?: [self avatarFromWeChatNavigationStack] ?: [YZWCServiceCenter getSelfAvatar];
+    UIImage *localAvatar = [YZWCServiceCenter getSelfAvatar] ?: [self avatarFromWeChatNavigationStack];
     if (localAvatar && self.avatarView) {
         self.avatarView.image = localAvatar;
-        return;
     }
 
     __weak typeof(self) weakSelf = self;
