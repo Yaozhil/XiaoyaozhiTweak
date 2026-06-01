@@ -10,6 +10,7 @@
 #import <QuartzCore/QuartzCore.h>
 
 extern UIImage *YZEmbeddedDonationImage(void);
+extern UIImage *YZEmbeddedFollowIconImage(void);
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 static NSInteger const kYZDonationOverlayTag = 95101;
@@ -182,10 +183,10 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.bottomBar addSubview:self.followCard];
 
     // 行内元素
-    self.followIconView = [self followIconViewWithFrame:CGRectMake(20, 11, 26, 26)];
+    self.followIconView = [self followIconViewWithFrame:CGRectMake(20, 10, 28, 28)];
     [self.followCard addSubview:self.followIconView];
 
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(56, 14, cardW - 170, 20)];
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(58, 14, cardW - 172, 20)];
     label.text = @"关注杳知公众号";
     label.font = [UIFont systemFontOfSize:17];
     label.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
@@ -203,23 +204,29 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 
 - (UIView *)followIconViewWithFrame:(CGRect)frame {
     UIView *icon = [[UIView alloc] initWithFrame:frame];
-    icon.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.12];
-    icon.layer.cornerRadius = 9;
-    icon.layer.borderWidth = 0.5;
-    icon.layer.borderColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.18].CGColor;
-    icon.clipsToBounds = YES;
+    icon.backgroundColor = UIColor.clearColor;
+    icon.clipsToBounds = NO;
 
-    UILabel *spark = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height)];
-    spark.text = @"杳";
-    spark.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    spark.textAlignment = NSTextAlignmentCenter;
-    spark.textColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0];
-    [icon addSubview:spark];
-
-    UIView *shine = [[UIView alloc] initWithFrame:CGRectMake(frame.size.width - 8, 5, 4, 4)];
-    shine.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.38];
-    shine.layer.cornerRadius = 2;
-    [icon addSubview:shine];
+    UIImage *followIcon = YZEmbeddedFollowIconImage();
+    if (followIcon) {
+        UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
+        imageView.image = followIcon;
+        imageView.contentMode = UIViewContentModeScaleAspectFill;
+        imageView.layer.cornerRadius = 8;
+        imageView.layer.borderWidth = 0.5;
+        imageView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.88].CGColor;
+        imageView.clipsToBounds = YES;
+        [icon addSubview:imageView];
+    } else {
+        icon.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.12];
+        icon.layer.cornerRadius = 9;
+        UILabel *spark = [[UILabel alloc] initWithFrame:icon.bounds];
+        spark.text = @"杳";
+        spark.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+        spark.textAlignment = NSTextAlignmentCenter;
+        spark.textColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0];
+        [icon addSubview:spark];
+    }
 
     return icon;
 }

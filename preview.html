@@ -259,25 +259,14 @@
   }
   .follow-icon {
     width: 26px; height: 26px;
-    border-radius: 9px;
+    border-radius: 8px;
     margin-right: 10px;
     flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
+    display: block;
     position: relative;
     overflow: hidden;
-    color: var(--blue);
-    font-size: 14px;
-    font-weight: 600;
-    background: rgba(0,122,255,0.12);
-    border: 0.5px solid rgba(0,122,255,0.18);
-  }
-  .follow-icon::after {
-    content: '';
-    position: absolute;
-    right: 5px; top: 5px;
-    width: 4px; height: 4px;
-    border-radius: 50%;
-    background: rgba(0,122,255,0.38);
+    background: url('generated/follow_icon_96.jpg') center/cover no-repeat;
+    border: 0.5px solid rgba(255,255,255,0.88);
   }
   .row-value {
     font-size: 15px;
@@ -441,7 +430,7 @@
           </div>
         </div>
         <div class="plugin-name">小杳知</div>
-        <div class="plugin-version">Version: 1.1.1</div>
+        <div class="plugin-version">Version: 1.1.2</div>
       </div>
 
       <!-- 主菜单 -->
@@ -463,7 +452,7 @@
     <div class="bottom-bar">
       <div class="follow-card">
         <div class="row" id="followRow" onclick="handleFollow()">
-          <span class="follow-icon">杳</span>
+          <span class="follow-icon"></span>
           <span class="row-label">关注杳知公众号</span>
           <span class="follow-status-dot not-followed" id="followDot"></span>
           <span class="row-value blue" id="followStatus">未关注</span>

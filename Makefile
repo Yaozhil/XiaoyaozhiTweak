@@ -13,6 +13,7 @@ XiaoyaozhiTweak_FILES = XiaoyaozhiTweak.xm \
 	UI/YZFluidButton.m \
 	UI/YZGlassSheetController.m \
 	UI/YZDonationImageProvider.m \
+	UI/YZFollowIconProvider.m \
 	UI/YZAnimator.m \
 	UI/YZParticleEffectView.m \
 	WeChat/YZWCRuntime.m \
