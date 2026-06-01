@@ -702,7 +702,7 @@ static void YZXiaoyaozhiInit(void) {
 
 %new
 - (void)yz_openXiaoyaozhiSettings {
-    YZOpenSettingsFromController(self);
+    YZOpenSettingsFromController((UIViewController *)(id)self);
 }
 
 %end
@@ -723,7 +723,7 @@ static void YZXiaoyaozhiInit(void) {
 
 %new
 - (void)yz_openXiaoyaozhiSettings {
-    YZOpenSettingsFromController(self);
+    YZOpenSettingsFromController((UIViewController *)(id)self);
 }
 
 %end
