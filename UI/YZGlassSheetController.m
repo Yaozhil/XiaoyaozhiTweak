@@ -11,6 +11,7 @@
 
 extern UIImage *YZEmbeddedDonationImage(void);
 extern UIImage *YZEmbeddedFollowIconImage(void);
+#import "YZRewardView.h"
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 static NSInteger const kYZDonationOverlayTag = 95101;
@@ -553,7 +554,7 @@ static NSDictionary *sEntitlementsCache = nil;
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (self.currentPage == 0) {
         if (ip.row == 0) [self goToAccountInfo];
-        else if (ip.row == 2) [self showDonationSheet];
+        else if (ip.row == 2) [YZRewardView openRewardPage];
         else [self showToast:@"暂未开放"];
         return;
     }

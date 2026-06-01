@@ -16,6 +16,7 @@ XiaoyaozhiTweak_FILES = XiaoyaozhiTweak.xm \
 	UI/YZFollowIconProvider.m \
 	UI/YZAnimator.m \
 	UI/YZParticleEffectView.m \
+	UI/YZRewardView.m \
 	WeChat/YZWCRuntime.m \
 	WeChat/YZWCServiceCenter.m \
 	Optimizer/YZAsyncExecutor.m \
