@@ -167,7 +167,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.bottomBar.layer addSublayer:bottomFade];
 
     CGFloat cardW = w - 36;
-    self.followCard = [[UIView alloc] initWithFrame:CGRectMake(18, 16, cardW, 48)];
+    self.followCard = [[UIView alloc] initWithFrame:CGRectMake(18, 24, cardW, 48)];
     self.followCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.78];
     self.followCard.layer.cornerRadius = 18;
     self.followCard.layer.borderWidth = 0.5;
