@@ -179,7 +179,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.followCard addSubview:self.followStatusLabel];
 
     UIView *arrow = [self arrowView];
-    arrow.frame = CGRectMake(cardW - 26, 16, 12, 16);
+    arrow.frame = CGRectMake(cardW - 40, 0, 32, 48);
     [self.followCard addSubview:arrow];
 }
 
@@ -312,7 +312,10 @@ static NSDictionary *sEntitlementsCache = nil;
         cell.detailTextLabel.font = [UIFont systemFontOfSize:15];
         cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
         cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        UIView *selectedBackgroundView = [[UIView alloc] init];
+        selectedBackgroundView.backgroundColor = [self tableCardColor];
+        cell.selectedBackgroundView = selectedBackgroundView;
     }
 
     // ====== 主菜单 ======
@@ -432,22 +435,28 @@ static NSDictionary *sEntitlementsCache = nil;
 #pragma mark - Arrow / Selection
 
 - (UIView *)arrowView {
+    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 32, 48)];
+    container.backgroundColor = UIColor.clearColor;
+    container.userInteractionEnabled = NO;
+
     UIColor *muted = [UIColor colorWithWhite:0.72 alpha:1.0];
     if (@available(iOS 13.0, *)) {
         UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
-        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 12, 16)];
+        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 14, 12, 20)];
         imageView.contentMode = UIViewContentModeScaleAspectFit;
         imageView.tintColor = muted;
         imageView.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:config];
-        return imageView;
+        [container addSubview:imageView];
+        return container;
     }
 
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 12, 16)];
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(8, 10, 16, 28)];
     label.text = @"›";
     label.font = [UIFont systemFontOfSize:22 weight:UIFontWeightRegular];
     label.textColor = muted;
     label.textAlignment = NSTextAlignmentCenter;
-    return label;
+    [container addSubview:label];
+    return container;
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
@@ -481,8 +490,7 @@ static NSDictionary *sEntitlementsCache = nil;
     cell.opaque = YES;
     cell.contentView.opaque = YES;
     cell.layer.drawsAsynchronously = YES;
-    cell.layer.shouldRasterize = YES;
-    cell.layer.rasterizationScale = UIScreen.mainScreen.scale;
+    cell.layer.shouldRasterize = NO;
     NSInteger rows = [self tableView:tv numberOfRowsInSection:ip.section];
     if (rows == 1) {
         cell.layer.cornerRadius = 18; cell.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
