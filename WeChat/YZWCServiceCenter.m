@@ -54,6 +54,25 @@ static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorN
     return nil;
 }
 
+static id YZValueForAnyKey(id target, NSArray<NSString *> *keys) {
+    for (NSString *key in keys) {
+        @try {
+            id value = [target valueForKey:key];
+            if (value && value != (id)kCFNull) return value;
+        } @catch (__unused NSException *exception) {
+        }
+    }
+    return nil;
+}
+
+static BOOL YZLooksLikeAvatarImage(UIImage *image) {
+    if (!image) return NO;
+    CGSize size = image.size;
+    if (size.width < 36 || size.height < 36) return NO;
+    CGFloat ratio = size.width / MAX(size.height, 1.0);
+    return ratio > 0.75 && ratio < 1.33;
+}
+
 static UIImage *YZDownloadAvatarImage(NSString *urlString) {
     if (urlString.length == 0 || NSThread.isMainThread) return nil;
 
@@ -264,6 +283,11 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
                 return image;
             }
         }
+        UIImage *kvcImage = YZImageFromAvatarObject(YZValueForAnyKey(selfContact, contactAvatarSelectors));
+        if (kvcImage) {
+            sCachedSelfAvatar = kvcImage;
+            return kvcImage;
+        }
 
         NSString *userName = [self getCurrentUserName];
         UIImage *managerImage = YZAvatarFromWeChatImageManagers(userName);
@@ -279,6 +303,16 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             @"headHDImgUrl",
             @"headImgUrl"
         ]);
+        if (headImgUrl.length == 0) {
+            id urlValue = YZValueForAnyKey(selfContact, @[
+                @"m_nsHeadHDImgUrl",
+                @"m_nsHeadImgUrl",
+                @"m_nsHeadHDUrl",
+                @"headHDImgUrl",
+                @"headImgUrl"
+            ]);
+            if ([urlValue isKindOfClass:NSString.class]) headImgUrl = urlValue;
+        }
 
         if (userName.length > 0) {
             NSArray<NSString *> *cacheRoots = @[
@@ -321,6 +355,11 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             if (completion) completion(avatar);
         });
     });
+}
+
++ (void)rememberPossibleSelfAvatar:(UIImage *)avatar {
+    if (!YZLooksLikeAvatarImage(avatar)) return;
+    sCachedSelfAvatar = avatar;
 }
 
 + (NSString *)getSelfNickname {

@@ -163,7 +163,7 @@ static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 }
 
 - (void)buildTableHeader:(CGFloat)w {
-    CGFloat headerH = 190;
+    CGFloat headerH = 230;
     self.headerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, w, headerH)];
 
     CGFloat avatarSize = 80;
@@ -209,7 +209,7 @@ static NSDictionary *sEntitlementsCache = nil;
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
     if (self.currentPage == 0) return 1;
     if (self.currentPage == 2) return 1; // 全部权限单分组
-    return 4; // 用户信息 应用信息 证书信息 权限信息
+    return 5; // 用户信息 应用信息 证书信息 权限信息 查看全部
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)sec {
@@ -219,12 +219,14 @@ static NSDictionary *sEntitlementsCache = nil;
         case 0: return 2;  // 用户信息（2行）
         case 1: return 5;  // 应用信息
         case 2: return 1;  // 证书到期
-        case 3: return 7;  // 核心权限 + 查看全部
+        case 3: return 6;  // 核心权限
+        case 4: return 1;  // 查看全部权限
     }
     return 0;
 }
 
 - (CGFloat)tableView:(UITableView *)tv heightForHeaderInSection:(NSInteger)sec {
+    if (self.currentPage == 1 && sec == 4) return 14;
     return 44;
 }
 - (CGFloat)tableView:(UITableView *)tv heightForFooterInSection:(NSInteger)sec {
@@ -233,6 +235,7 @@ static NSDictionary *sEntitlementsCache = nil;
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)sec {
     if (self.currentPage == 0) return nil;
     if (self.currentPage == 2) return @"全部权限";
+    if (sec == 4) return nil;
     return @[@"用户信息", @"应用信息", @"证书信息", @"权限信息"][sec];
 }
 - (CGFloat)tableView:(UITableView *)tv heightForRowAtIndexPath:(NSIndexPath *)ip {
@@ -275,6 +278,7 @@ static NSDictionary *sEntitlementsCache = nil;
         case 1: return [self appInfoCell:cell atRow:ip.row];
         case 2: return [self certInfoCell:cell atRow:ip.row];
         case 3: return [self permInfoCell:cell atRow:ip.row tv:tv];
+        case 4: return [self permissionMoreCell:cell];
     }
     return cell;
 }
@@ -333,23 +337,24 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (UITableViewCell *)permInfoCell:(UITableViewCell *)cell atRow:(NSInteger)row tv:(UITableView *)tv {
-    // 核心 6 项 + 箭头行
+    // 核心 6 项
     NSArray *core = @[@"推送通知", @"WiFi 访问", @"应用组", @"钥匙串访问", @"增加内存限制", @"扩展虚拟地址"];
-    if (row < 6) {
-        if (!sEntitlementsCache) sEntitlementsCache = [YZWCServiceCenter getAllEntitlements];
-        BOOL on = [sEntitlementsCache[core[row]] boolValue];
-        cell.textLabel.text = core[row];
-        cell.detailTextLabel.text = @"";
-        // 简约圆点指示器
-        UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
-        dot.layer.cornerRadius = 5;
-        dot.backgroundColor = on ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0] : [UIColor colorWithWhite:0.82 alpha:1.0];
-        cell.accessoryView = dot;
-    } else {
-        cell.textLabel.text = @"查看全部权限";
-        cell.detailTextLabel.text = @"";
-        cell.accessoryView = [self arrowView];
-    }
+    if (!sEntitlementsCache) sEntitlementsCache = [YZWCServiceCenter getAllEntitlements];
+    BOOL on = [sEntitlementsCache[core[row]] boolValue];
+    cell.textLabel.text = core[row];
+    cell.detailTextLabel.text = @"";
+    // 简约圆点指示器
+    UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
+    dot.layer.cornerRadius = 5;
+    dot.backgroundColor = on ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0] : [UIColor colorWithWhite:0.82 alpha:1.0];
+    cell.accessoryView = dot;
+    return cell;
+}
+
+- (UITableViewCell *)permissionMoreCell:(UITableViewCell *)cell {
+    cell.textLabel.text = @"查看全部权限";
+    cell.detailTextLabel.text = @"";
+    cell.accessoryView = [self arrowView];
     return cell;
 }
 
@@ -413,7 +418,7 @@ static NSDictionary *sEntitlementsCache = nil;
         }
         return;
     }
-    if (self.currentPage == 1 && ip.section == 3 && ip.row == 6) {
+    if (self.currentPage == 1 && ip.section == 4 && ip.row == 0) {
         [self goToAllPermissions];
     }
 }
@@ -482,6 +487,64 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 #pragma mark - Follow
+
+- (BOOL)isCandidateAvatarImageView:(UIImageView *)imageView {
+    if (!imageView || imageView == self.avatarView || !imageView.image) return NO;
+
+    CGRect bounds = imageView.bounds;
+    CGFloat minSide = MIN(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
+    CGFloat maxSide = MAX(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
+    if (minSide < 44 || maxSide > 140) return NO;
+
+    CGSize imageSize = imageView.image.size;
+    if (imageSize.width < 36 || imageSize.height < 36) return NO;
+    CGFloat ratio = imageSize.width / MAX(imageSize.height, 1.0);
+    return ratio > 0.75 && ratio < 1.33;
+}
+
+- (UIImage *)avatarFromViewHierarchy:(UIView *)view bestSide:(CGFloat *)bestSide {
+    if (!view || view.hidden || view.alpha < 0.05) return nil;
+
+    UIImage *bestImage = nil;
+    if ([view isKindOfClass:UIImageView.class]) {
+        UIImageView *imageView = (UIImageView *)view;
+        if ([self isCandidateAvatarImageView:imageView]) {
+            CGFloat side = MIN(CGRectGetWidth(imageView.bounds), CGRectGetHeight(imageView.bounds));
+            if (side > *bestSide) {
+                *bestSide = side;
+                bestImage = imageView.image;
+            }
+        }
+    }
+
+    for (UIView *subview in view.subviews) {
+        UIImage *candidate = [self avatarFromViewHierarchy:subview bestSide:bestSide];
+        if (candidate) bestImage = candidate;
+    }
+    return bestImage;
+}
+
+- (UIImage *)avatarFromWeChatNavigationStack {
+    CGFloat bestSide = 0;
+    UIImage *bestImage = nil;
+
+    NSArray<UIViewController *> *controllers = self.navigationController.viewControllers ?: @[];
+    for (UIViewController *controller in controllers) {
+        if (controller == self || !controller.isViewLoaded) continue;
+        UIImage *candidate = [self avatarFromViewHierarchy:controller.view bestSide:&bestSide];
+        if (candidate) bestImage = candidate;
+    }
+
+    if (!bestImage) {
+        for (UIWindow *window in UIApplication.sharedApplication.windows) {
+            UIImage *candidate = [self avatarFromViewHierarchy:window bestSide:&bestSide];
+            if (candidate) bestImage = candidate;
+        }
+    }
+
+    if (bestImage) [YZWCServiceCenter rememberPossibleSelfAvatar:bestImage];
+    return bestImage;
+}
 
 - (void)refreshFollowStatus {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -583,7 +646,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)refreshAvatar {
-    UIImage *localAvatar = self.appIcon ?: [YZWCServiceCenter getSelfAvatar];
+    UIImage *localAvatar = self.appIcon ?: [self avatarFromWeChatNavigationStack] ?: [YZWCServiceCenter getSelfAvatar];
     if (localAvatar && self.avatarView) {
         self.avatarView.image = localAvatar;
         return;
