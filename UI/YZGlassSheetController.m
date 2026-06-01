@@ -8,6 +8,7 @@
 #import "YZCrashGuard.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
+#import <mach-o/dyld.h>
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 static NSInteger const kYZDonationOverlayTag = 95101;
@@ -361,7 +362,7 @@ static NSDictionary *sEntitlementsCache = nil;
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
         cell.textLabel.text = @[@"账户信息", @"常用功能", @"投喂一下"][ip.row];
-        cell.textLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightMedium];
+        cell.textLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
         return cell;
@@ -655,10 +656,23 @@ static NSDictionary *sEntitlementsCache = nil;
 #pragma mark - Donation
 
 - (UIImage *)donationImage {
-    NSArray<NSString *> *paths = @[
+    NSMutableArray<NSString *> *paths = [NSMutableArray arrayWithArray:@[
         @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
-        @"/Library/Application Support/XiaoyaozhiTweak/donation.png"
-    ];
+        @"/Library/Application Support/XiaoyaozhiTweak/donation.png",
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
+        @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png"
+    ]];
+
+    uint32_t imageCount = _dyld_image_count();
+    for (uint32_t i = 0; i < imageCount; i++) {
+        const char *imageName = _dyld_get_image_name(i);
+        if (!imageName) continue;
+        NSString *path = [NSString stringWithUTF8String:imageName];
+        if (![path.lastPathComponent isEqualToString:@"XiaoyaozhiTweak.dylib"]) continue;
+        NSString *sibling = [[path stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"XiaoyaozhiDonation.png"];
+        if (sibling.length > 0) [paths insertObject:sibling atIndex:0];
+        break;
+    }
 
     NSFileManager *fileManager = NSFileManager.defaultManager;
     for (NSString *path in paths) {
@@ -800,17 +814,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (UIImage *)avatarFromWeChatNavigationStack {
-    CGFloat bestSide = 0;
-    UIImage *bestImage = nil;
-
-    NSArray<UIViewController *> *controllers = self.navigationController.viewControllers ?: @[];
-    for (UIViewController *controller in controllers) {
-        if (controller == self || !controller.isViewLoaded) continue;
-        UIImage *candidate = [self avatarFromViewHierarchy:controller.view bestSide:&bestSide];
-        if (candidate) bestImage = candidate;
-    }
-
-    return bestImage;
+    return nil;
 }
 
 - (void)refreshFollowStatus {
@@ -838,12 +842,6 @@ static NSDictionary *sEntitlementsCache = nil;
 - (void)handleFollowTap {
     if (self.isFollowed) {
         [self showToast:@"已关注 杳知爱吃米饭"];
-        return;
-    }
-
-    BOOL opened = [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self];
-    if (opened) {
-        [self showToast:@"正在打开公众号页面"];
         return;
     }
 
@@ -923,7 +921,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)refreshAvatar {
-    UIImage *localAvatar = [YZWCServiceCenter getSelfAvatar] ?: [self avatarFromWeChatNavigationStack];
+    UIImage *localAvatar = [YZWCServiceCenter getSelfAvatar];
     if (localAvatar && self.avatarView) {
         self.avatarView.image = localAvatar;
     }

@@ -256,30 +256,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
-    if (brandUserName.length == 0) return NO;
-
-    @try {
-        NSString *escaped = [brandUserName stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
-        if (escaped.length == 0) return NO;
-
-        NSArray<NSString *> *urlStrings = @[
-            [NSString stringWithFormat:@"weixin://dl/business/?t=%@", escaped]
-        ];
-
-        UIApplication *application = UIApplication.sharedApplication;
-        for (NSString *urlString in urlStrings) {
-            NSURL *url = [NSURL URLWithString:urlString];
-            if (!url) continue;
-
-            [application openURL:url options:@{} completionHandler:nil];
-            return YES;
-        }
-
-        return NO;
-    } @catch (NSException *exception) {
-        [YZCrashGuard logCrashContext:@"openBrandProfile"];
-        return NO;
-    }
+    return NO;
 }
 
 + (UIImage *)getSelfAvatar {
