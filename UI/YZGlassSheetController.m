@@ -947,18 +947,19 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)handleFollowTap {
-    // 直接跳转公众号关注界面
-    NSString *urlStr = [NSString stringWithFormat:@"weixin://dl/business/?t=%@", kGHUserName];
-    NSURL *url = [NSURL URLWithString:urlStr];
-    if (url) {
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
-            if (success) {
-                self.isFollowed = YES;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self updateFollowUI];
-                });
-            }
-        }];
+    if (self.isFollowed) {
+        [self showToast:@"已关注 杳知爱吃米饭"];
+        return;
+    }
+
+    BOOL opened = [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self];
+    if (opened) {
+        // 关注状态等从资料页返回后刷新
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self refreshFollowStatus];
+        });
+    } else {
+        [self showToast:@"暂无法打开，请手动搜索关注"];
     }
 }
 
