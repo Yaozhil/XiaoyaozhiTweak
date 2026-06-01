@@ -965,9 +965,21 @@ static NSDictionary *sEntitlementsCache = nil;
             return;
         }
 
-        [rewardVC setValue:@YES forKey:@"fromPluginSponsorPage"];
-        [rewardVC setValue:@YES forKey:@"pluginReward"];
-        [rewardVC setValue:kYZAuthorWxid forKey:@"wxid"];
+        // 安全设置 KVC：逐一检查 setter 是否存在
+        NSDictionary *kvPairs = @{
+            @"fromPluginSponsorPage": @YES,
+            @"pluginReward": @YES,
+            @"wxid": kYZAuthorWxid,
+        };
+        for (NSString *key in kvPairs) {
+            NSString *selName = [NSString stringWithFormat:@"set%@%@:",
+                                 [[key substringToIndex:1] uppercaseString],
+                                 [key substringFromIndex:1]];
+            SEL setter = NSSelectorFromString(selName);
+            if ([rewardVC respondsToSelector:setter]) {
+                [rewardVC setValue:kvPairs[key] forKey:key];
+            }
+        }
 
         UIViewController *topVC = self;
         while (topVC.presentedViewController) topVC = topVC.presentedViewController;
