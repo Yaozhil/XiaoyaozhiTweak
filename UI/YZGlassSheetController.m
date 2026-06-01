@@ -208,6 +208,27 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     icon.backgroundColor = UIColor.clearColor;
     icon.clipsToBounds = NO;
 
+    // 优先从磁盘加载自定义图标
+    NSArray *paths = @[
+        @"/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
+        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
+    ];
+    UIImage *customIcon = nil;
+    for (NSString *path in paths) {
+        customIcon = [UIImage imageWithContentsOfFile:path];
+        if (customIcon) break;
+    }
+
+    if (customIcon) {
+        UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
+        imageView.image = customIcon;
+        imageView.contentMode = UIViewContentModeScaleAspectFit;
+        imageView.backgroundColor = UIColor.clearColor;
+        [icon addSubview:imageView];
+        return icon;
+    }
+
+    // 兜底：使用内嵌图标
     UIImage *followIcon = YZEmbeddedFollowIconImage();
     if (followIcon) {
         UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
