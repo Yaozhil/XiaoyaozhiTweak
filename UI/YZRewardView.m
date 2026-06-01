@@ -1,4 +1,5 @@
 #import "YZRewardView.h"
+#import <objc/message.h>
 
 static NSString *sCachedRewardURL = nil;
 

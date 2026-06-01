@@ -23,7 +23,7 @@ XiaoyaozhiTweak_FILES = XiaoyaozhiTweak.xm \
 	Optimizer/YZMemoryCache.m \
 	Guard/YZCrashGuard.m \
 	Guard/YZPrivacyGuard.m
-XiaoyaozhiTweak_FRAMEWORKS = UIKit Foundation QuartzCore CoreGraphics
+XiaoyaozhiTweak_FRAMEWORKS = UIKit Foundation QuartzCore CoreGraphics CoreImage
 XiaoyaozhiTweak_CFLAGS = -fobjc-arc -fobjc-exceptions -Wno-unused-parameter -I. -ICore -IUI -IWeChat -IOptimizer -IGuard
 XiaoyaozhiTweak_LDFLAGS = -lz -lobjc
 
