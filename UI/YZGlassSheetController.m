@@ -8,7 +8,8 @@
 #import "YZCrashGuard.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
-#import <mach-o/dyld.h>
+
+extern UIImage *YZEmbeddedDonationImage(void);
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
 static NSInteger const kYZDonationOverlayTag = 95101;
@@ -33,6 +34,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 @property (nonatomic, strong) UIView *followCard;
 @property (nonatomic, strong) UILabel *followStatusLabel;
 @property (nonatomic, strong) UIView *followDot;
+@property (nonatomic, strong) UIView *followIconView;
 @property (nonatomic, strong) UIScreenEdgePanGestureRecognizer *internalBackGesture;
 @property (nonatomic, assign) BOOL isFollowed;
 @property (nonatomic, assign) BOOL isPresented;
@@ -127,7 +129,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 
     // TableView
     CGFloat tableY = navY + navH;
-    CGFloat bottomOverlayH = 88 + bottomSafe;
+    CGFloat bottomOverlayH = 76 + bottomSafe;
     CGFloat tableH = MAX(44, h - tableY);
     self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, tableY, w, tableH) style:UITableViewStyleGrouped];
     self.tableView.backgroundColor = self.view.backgroundColor;
@@ -156,22 +158,22 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     bottomFade.frame = self.bottomBar.bounds;
     bottomFade.colors = @[
         (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:0.0].CGColor,
-        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:0.92].CGColor,
-        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:1.0].CGColor
+        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:0.58].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:0.92].CGColor
     ];
-    bottomFade.locations = @[@0.0, @0.42, @1.0];
+    bottomFade.locations = @[@0.0, @0.55, @1.0];
     [self.bottomBar.layer addSublayer:bottomFade];
 
     CGFloat cardW = w - 36;
-    self.followCard = [[UIView alloc] initWithFrame:CGRectMake(18, 24, cardW, 48)];
-    self.followCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.86];
+    self.followCard = [[UIView alloc] initWithFrame:CGRectMake(18, 16, cardW, 48)];
+    self.followCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.78];
     self.followCard.layer.cornerRadius = 18;
     self.followCard.layer.borderWidth = 0.5;
     self.followCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.92].CGColor;
-    self.followCard.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.10].CGColor;
+    self.followCard.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.08].CGColor;
     self.followCard.layer.shadowOpacity = 1.0;
-    self.followCard.layer.shadowRadius = 18;
-    self.followCard.layer.shadowOffset = CGSizeMake(0, -3);
+    self.followCard.layer.shadowRadius = 20;
+    self.followCard.layer.shadowOffset = CGSizeMake(0, 8);
     self.followCard.clipsToBounds = NO;
     self.followCard.userInteractionEnabled = YES;
 
@@ -180,20 +182,46 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.bottomBar addSubview:self.followCard];
 
     // 行内元素
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(22, 14, cardW - 136, 20)];
-    label.text = @"关注小杳知公众号";
+    self.followIconView = [self followIconViewWithFrame:CGRectMake(20, 11, 26, 26)];
+    [self.followCard addSubview:self.followIconView];
+
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(56, 14, cardW - 170, 20)];
+    label.text = @"关注杳知公众号";
     label.font = [UIFont systemFontOfSize:17];
     label.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [self.followCard addSubview:label];
 
-    self.followDot = [[UIView alloc] initWithFrame:CGRectMake(cardW - 86, 20, 8, 8)];
+    self.followDot = [[UIView alloc] initWithFrame:CGRectMake(cardW - 88, 20, 8, 8)];
     self.followDot.layer.cornerRadius = 4;
     [self.followCard addSubview:self.followDot];
 
-    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 72, 14, 58, 20)];
+    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 74, 14, 60, 20)];
     self.followStatusLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    self.followStatusLabel.textAlignment = NSTextAlignmentRight;
+    self.followStatusLabel.textAlignment = NSTextAlignmentLeft;
     [self.followCard addSubview:self.followStatusLabel];
+}
+
+- (UIView *)followIconViewWithFrame:(CGRect)frame {
+    UIView *icon = [[UIView alloc] initWithFrame:frame];
+    icon.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.12];
+    icon.layer.cornerRadius = 9;
+    icon.layer.borderWidth = 0.5;
+    icon.layer.borderColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.18].CGColor;
+    icon.clipsToBounds = YES;
+
+    UILabel *spark = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height)];
+    spark.text = @"杳";
+    spark.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    spark.textAlignment = NSTextAlignmentCenter;
+    spark.textColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:1.0];
+    [icon addSubview:spark];
+
+    UIView *shine = [[UIView alloc] initWithFrame:CGRectMake(frame.size.width - 8, 5, 4, 4)];
+    shine.backgroundColor = [UIColor colorWithRed:0.0 green:0.478 blue:1.0 alpha:0.38];
+    shine.layer.cornerRadius = 2;
+    [icon addSubview:shine];
+
+    return icon;
 }
 
 - (void)buildTableHeader:(CGFloat)w {
@@ -371,7 +399,7 @@ static NSDictionary *sEntitlementsCache = nil;
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
         cell.textLabel.text = @[@"账户信息", @"常用功能", @"投喂一下"][ip.row];
-        cell.textLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightRegular];
+        cell.textLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
         return cell;
@@ -665,23 +693,15 @@ static NSDictionary *sEntitlementsCache = nil;
 #pragma mark - Donation
 
 - (UIImage *)donationImage {
-    NSMutableArray<NSString *> *paths = [NSMutableArray arrayWithArray:@[
+    UIImage *embedded = YZEmbeddedDonationImage();
+    if (embedded) return embedded;
+
+    NSArray<NSString *> *paths = @[
         @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
         @"/Library/Application Support/XiaoyaozhiTweak/donation.png",
         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
         @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png"
-    ]];
-
-    uint32_t imageCount = _dyld_image_count();
-    for (uint32_t i = 0; i < imageCount; i++) {
-        const char *imageName = _dyld_get_image_name(i);
-        if (!imageName) continue;
-        NSString *path = [NSString stringWithUTF8String:imageName];
-        if (![path.lastPathComponent isEqualToString:@"XiaoyaozhiTweak.dylib"]) continue;
-        NSString *sibling = [[path stringByDeletingLastPathComponent] stringByAppendingPathComponent:@"XiaoyaozhiDonation.png"];
-        if (sibling.length > 0) [paths insertObject:sibling atIndex:0];
-        break;
-    }
+    ];
 
     NSFileManager *fileManager = NSFileManager.defaultManager;
     for (NSString *path in paths) {
@@ -788,6 +808,7 @@ static NSDictionary *sEntitlementsCache = nil;
 
 - (BOOL)isCandidateAvatarImageView:(UIImageView *)imageView {
     if (!imageView || imageView == self.avatarView || !imageView.image) return NO;
+    if (self.appIcon && imageView.image == self.appIcon) return NO;
 
     CGRect bounds = imageView.bounds;
     CGFloat minSide = MIN(CGRectGetWidth(bounds), CGRectGetHeight(bounds));
@@ -797,7 +818,44 @@ static NSDictionary *sEntitlementsCache = nil;
     CGSize imageSize = imageView.image.size;
     if (imageSize.width < 36 || imageSize.height < 36) return NO;
     CGFloat ratio = imageSize.width / MAX(imageSize.height, 1.0);
-    return ratio > 0.75 && ratio < 1.33;
+    if (ratio <= 0.75 || ratio >= 1.33) return NO;
+
+    return [self imageLooksDetailedEnoughForAvatar:imageView.image];
+}
+
+- (BOOL)imageLooksDetailedEnoughForAvatar:(UIImage *)image {
+    CGImageRef cgImage = image.CGImage;
+    if (!cgImage) return NO;
+
+    enum { sampleWidth = 12, sampleHeight = 12 };
+    unsigned char pixels[sampleWidth * sampleHeight * 4] = {0};
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, sampleWidth, sampleHeight, 8, sampleWidth * 4, colorSpace, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) return NO;
+
+    CGContextDrawImage(context, CGRectMake(0, 0, sampleWidth, sampleHeight), cgImage);
+    CGContextRelease(context);
+
+    CGFloat lumaSum = 0;
+    CGFloat lumaSquareSum = 0;
+    NSUInteger opaqueCount = 0;
+    for (size_t i = 0; i < sampleWidth * sampleHeight; i++) {
+        CGFloat alpha = pixels[i * 4 + 3] / 255.0;
+        if (alpha < 0.35) continue;
+        CGFloat red = pixels[i * 4] / 255.0;
+        CGFloat green = pixels[i * 4 + 1] / 255.0;
+        CGFloat blue = pixels[i * 4 + 2] / 255.0;
+        CGFloat luma = red * 0.299 + green * 0.587 + blue * 0.114;
+        lumaSum += luma;
+        lumaSquareSum += luma * luma;
+        opaqueCount++;
+    }
+
+    if (opaqueCount < sampleWidth * sampleHeight * 0.55) return NO;
+    CGFloat mean = lumaSum / MAX((CGFloat)opaqueCount, 1.0);
+    CGFloat variance = lumaSquareSum / MAX((CGFloat)opaqueCount, 1.0) - mean * mean;
+    return variance > 0.006;
 }
 
 - (UIImage *)avatarFromViewHierarchy:(UIView *)view bestSide:(CGFloat *)bestSide {
@@ -823,7 +881,19 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (UIImage *)avatarFromWeChatNavigationStack {
-    return nil;
+    CGFloat bestSide = 0;
+    UIImage *bestImage = nil;
+
+    NSArray<UIViewController *> *controllers = self.navigationController.viewControllers ?: @[];
+    for (UIViewController *controller in controllers) {
+        if (controller == self || !controller.isViewLoaded) continue;
+        NSString *className = NSStringFromClass(controller.class).lowercaseString;
+        if ([className containsString:@"plugin"] || [className containsString:@"yzglass"]) continue;
+        UIImage *candidate = [self avatarFromViewHierarchy:controller.view bestSide:&bestSide];
+        if (candidate) bestImage = candidate;
+    }
+
+    return bestImage;
 }
 
 - (void)refreshFollowStatus {
@@ -930,7 +1000,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)refreshAvatar {
-    UIImage *localAvatar = [YZWCServiceCenter getSelfAvatar];
+    UIImage *localAvatar = [YZWCServiceCenter getSelfAvatar] ?: [self avatarFromWeChatNavigationStack];
     if (localAvatar && self.avatarView) {
         self.avatarView.image = localAvatar;
     }
@@ -938,8 +1008,9 @@ static NSDictionary *sEntitlementsCache = nil;
     __weak typeof(self) weakSelf = self;
     [YZWCServiceCenter fetchSelfAvatarWithCompletion:^(UIImage *avatar) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf || !avatar) return;
-        strongSelf.avatarView.image = avatar;
+        if (!strongSelf) return;
+        UIImage *resolved = avatar ?: [strongSelf avatarFromWeChatNavigationStack];
+        if (resolved) strongSelf.avatarView.image = resolved;
     }];
 }
 
