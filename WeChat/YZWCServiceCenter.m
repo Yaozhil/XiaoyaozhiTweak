@@ -255,64 +255,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     }
 }
 
-+ (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
-    if (brandUserName.length == 0) return NO;
-
-    // 1. 通过 CContactMgr 获取公众号联系人对象
-    id contactMgr = [self getContactManager];
-    if (!contactMgr) return NO;
-
-    SEL getContactSel = NSSelectorFromString(@"getContactByName:");
-    if (![contactMgr respondsToSelector:getContactSel]) return NO;
-
-    id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, getContactSel, brandUserName);
-    if (!contact) {
-        // 尝试从服务端搜索
-        contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
-    }
-    if (!contact) return NO;
-
-    // 2. 创建联系人信息页
-    Class infoVCClass = NSClassFromString(@"CContactInfoViewController");
-    if (!infoVCClass) infoVCClass = NSClassFromString(@"MMContactInfoViewController");
-    if (!infoVCClass) return NO;
-
-    id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
-    if (!infoVC) return NO;
-
-    // 设置联系人对象
-    SEL setContactSel = NSSelectorFromString(@"setM_contact:");
-    if ([infoVC respondsToSelector:setContactSel]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setContactSel, contact);
-    } else {
-        SEL setUserSel = NSSelectorFromString(@"setUserInfo:");
-        if ([infoVC respondsToSelector:setUserSel]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setUserSel, contact);
-        }
-    }
-
-    // 3. 推入导航栈
-    if (viewController && viewController.navigationController) {
-        [viewController.navigationController pushViewController:infoVC animated:YES];
-        return YES;
-    }
-
-    // 兜底：查找当前顶层 VC
-    UIViewController *topVC = [self topMostViewController];
-    if (topVC && topVC.navigationController) {
-        [topVC.navigationController pushViewController:infoVC animated:YES];
-        return YES;
-    }
-
-    return NO;
-}
-
 + (id)searchBrandContact:(NSString *)brandUserName viaContactMgr:(id)contactMgr {
-    // 尝试通过 addBrandContact 获取
     SEL addSel = NSSelectorFromString(@"addBrandContact:scene:");
     if ([contactMgr respondsToSelector:addSel]) {
         ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(contactMgr, addSel, brandUserName, 3);
-        // 再次尝试获取
         SEL getSel = NSSelectorFromString(@"getContactByName:");
         if ([contactMgr respondsToSelector:getSel]) {
             return ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, getSel, brandUserName);
@@ -338,6 +284,52 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     UIViewController *root = keyWindow.rootViewController;
     while (root.presentedViewController) root = root.presentedViewController;
     return root;
+}
+
++ (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
+    if (brandUserName.length == 0) return NO;
+
+    id contactMgr = [self getContactManager];
+    if (!contactMgr) return NO;
+
+    SEL getContactSel = NSSelectorFromString(@"getContactByName:");
+    if (![contactMgr respondsToSelector:getContactSel]) return NO;
+
+    id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, getContactSel, brandUserName);
+    if (!contact) {
+        contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
+    }
+    if (!contact) return NO;
+
+    Class infoVCClass = NSClassFromString(@"CContactInfoViewController");
+    if (!infoVCClass) infoVCClass = NSClassFromString(@"MMContactInfoViewController");
+    if (!infoVCClass) return NO;
+
+    id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
+    if (!infoVC) return NO;
+
+    SEL setContactSel = NSSelectorFromString(@"setM_contact:");
+    if ([infoVC respondsToSelector:setContactSel]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setContactSel, contact);
+    } else {
+        SEL setUserSel = NSSelectorFromString(@"setUserInfo:");
+        if ([infoVC respondsToSelector:setUserSel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setUserSel, contact);
+        }
+    }
+
+    if (viewController && viewController.navigationController) {
+        [viewController.navigationController pushViewController:infoVC animated:YES];
+        return YES;
+    }
+
+    UIViewController *topVC = [self topMostViewController];
+    if (topVC && topVC.navigationController) {
+        [topVC.navigationController pushViewController:infoVC animated:YES];
+        return YES;
+    }
+
+    return NO;
 }
 
 + (UIImage *)getSelfAvatar {
