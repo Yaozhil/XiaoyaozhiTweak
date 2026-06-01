@@ -128,7 +128,6 @@ static void YZXiaoyaozhiInit(void) {
 
             // 监听（保存 token 以便卸载时移除）
             NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
-            __weak typeof(self) weakSelf = (id)NSClassFromString(@"YZAlertObserver"); // 占位，实际使用 block
 
             gYZBecomeActiveToken = [nc addObserverForName:UIApplicationDidBecomeActiveNotification
                                                     object:nil queue:[NSOperationQueue mainQueue]
@@ -149,10 +148,11 @@ static void YZXiaoyaozhiInit(void) {
                 if (gSheetController && gSheetController.isPresented) { [gSheetController dismissAnimated]; gSheetController = nil; }
                 [[YZMemoryCache shared] removeAllObjects];
                 // 移除所有 observer
-                if (gYZBecomeActiveToken) [nc removeObserver:gYZBecomeActiveToken];
-                if (gYZDidLoadToken) [nc removeObserver:gYZDidLoadToken];
-                if (gYZWillUnloadToken) [nc removeObserver:gYZWillUnloadToken];
-                if (gYZMemoryWarningToken) [nc removeObserver:gYZMemoryWarningToken];
+                NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+                if (gYZBecomeActiveToken) { [center removeObserver:gYZBecomeActiveToken]; gYZBecomeActiveToken = nil; }
+                if (gYZDidLoadToken) { [center removeObserver:gYZDidLoadToken]; gYZDidLoadToken = nil; }
+                if (gYZWillUnloadToken) { [center removeObserver:gYZWillUnloadToken]; gYZWillUnloadToken = nil; }
+                if (gYZMemoryWarningToken) { [center removeObserver:gYZMemoryWarningToken]; gYZMemoryWarningToken = nil; }
             }];
 
             gYZMemoryWarningToken = [nc addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
