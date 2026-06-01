@@ -208,10 +208,9 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     icon.backgroundColor = UIColor.clearColor;
     icon.clipsToBounds = NO;
 
-    // 优先从磁盘加载自定义图标
     NSArray *paths = @[
-        @"/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
         @"/var/jb/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
+        @"/Library/Application Support/XiaoyaozhiTweak/follow_icon.png",
     ];
     UIImage *customIcon = nil;
     for (NSString *path in paths) {
@@ -948,19 +947,18 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)handleFollowTap {
-    if (self.isFollowed) {
-        [self showToast:@"已关注 杳知爱吃米饭"];
-        return;
-    }
-
-    BOOL success = [YZWCServiceCenter followBrand:kGHUserName];
-    if (success) {
-        self.isFollowed = YES;
-        [self updateFollowUI];
-        [self showToast:@"已关注 杳知爱吃米饭"];
-    } else {
-        UIPasteboard.generalPasteboard.string = kGHUserName;
-        [self showToast:@"已复制公众号ID，请手动搜索关注"];
+    // 直接跳转公众号关注界面
+    NSString *urlStr = [NSString stringWithFormat:@"weixin://dl/business/?t=%@", kGHUserName];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    if (url) {
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
+            if (success) {
+                self.isFollowed = YES;
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self updateFollowUI];
+                });
+            }
+        }];
     }
 }
 
