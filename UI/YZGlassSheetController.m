@@ -6,6 +6,7 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
+#import "YZRewardView.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -427,7 +428,7 @@ static NSDictionary *sEntitlementsCache = nil;
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
         cell.textLabel.text = @[@"账户信息", @"常用功能", @"投喂一下"][ip.row];
-        cell.textLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightRegular];
+        cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
         return cell;
@@ -954,7 +955,11 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)showRewardSheet {
-    [self showDonationSheet];
+    [self showToast:@"正在打开赞赏页..."];
+    __weak typeof(self) weakSelf = self;
+    [YZRewardView openRewardPageWithFallback:^{
+        [weakSelf showDonationSheet];
+    }];
 }
 
 - (void)handleFollowTap {

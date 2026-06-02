@@ -1,14 +1,20 @@
 #import "YZRewardView.h"
-#import <objc/message.h>
 #import <UIKit/UIKit.h>
+#import <CoreImage/CoreImage.h>
+
+extern UIImage *YZEmbeddedDonationImage(void);
 
 static NSString *sCachedRewardURL = nil;
 
 @implementation YZRewardView
 
 + (void)openRewardPage {
+    [self openRewardPageWithFallback:nil];
+}
+
++ (void)openRewardPageWithFallback:(void (^)(void))fallback {
     if (sCachedRewardURL.length > 0) {
-        [self openRewardURL:sCachedRewardURL];
+        [self openRewardURL:sCachedRewardURL fallback:fallback];
         return;
     }
 
@@ -17,18 +23,26 @@ static NSString *sCachedRewardURL = nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (url.length > 0) {
                 sCachedRewardURL = url;
-                [self openRewardURL:url];
+                [self openRewardURL:url fallback:fallback];
             } else {
                 [self showToast:@"赞赏码未识别，请尝试长按保存"];
+                if (fallback) fallback();
             }
         });
     });
 }
 
 + (UIImage *)loadRewardImage {
+    UIImage *embedded = YZEmbeddedDonationImage();
+    if (embedded) return embedded;
+
     NSArray *paths = @[
         @"/var/jb/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
         @"/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
+        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
+        @"/Library/Application Support/XiaoyaozhiTweak/donation.png",
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
+        @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
     ];
     for (NSString *path in paths) {
         UIImage *img = [UIImage imageWithContentsOfFile:path];
@@ -61,9 +75,12 @@ static NSString *sCachedRewardURL = nil;
     return nil;
 }
 
-+ (void)openRewardURL:(NSString *)urlString {
++ (void)openRewardURL:(NSString *)urlString fallback:(void (^)(void))fallback {
     NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return;
+    if (!url) {
+        if (fallback) fallback();
+        return;
+    }
 
     UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [gen impactOccurred];
@@ -73,6 +90,7 @@ static NSString *sCachedRewardURL = nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!success) {
                 [self showToast:@"跳转失败，请长按保存赞赏码后扫码"];
+                if (fallback) fallback();
             }
         });
     }];
