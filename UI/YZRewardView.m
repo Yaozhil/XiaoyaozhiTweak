@@ -1,12 +1,8 @@
 #import "YZRewardView.h"
 #import <UIKit/UIKit.h>
-#import <CoreImage/CoreImage.h>
+#import <string.h>
 
 extern UIImage *YZEmbeddedDonationImage(void);
-
-static NSString *sCachedRewardURL = nil;
-
-static NSString *YZStringFromObject(id object, NSSet *visited);
 
 @implementation YZRewardView
 
@@ -15,22 +11,21 @@ static NSString *YZStringFromObject(id object, NSSet *visited);
 }
 
 + (void)openRewardPageWithFallback:(void (^)(void))fallback {
-    if (sCachedRewardURL.length > 0) {
-        [self openRewardURL:sCachedRewardURL fallback:fallback];
-        return;
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIImage *image = [self loadRewardImage];
+        if (!image) {
+            [self showToast:@"未找到赞赏码资源"];
+            if (fallback) fallback();
+            return;
+        }
 
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSString *url = [self decodeRewardQRCode];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (url.length > 0) {
-                sCachedRewardURL = url;
-                [self openRewardURL:url fallback:fallback];
-            } else {
-                [self showToast:@"赞赏码未识别，请尝试长按保存"];
-                if (fallback) fallback();
-            }
-        });
+        if ([self scanRewardImageWithWeChat:image]) {
+            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [gen impactOccurred];
+        } else {
+            [self showToast:@"赞赏页跳转失败，请稍后重试"];
+            if (fallback) fallback();
+        }
     });
 }
 
@@ -38,7 +33,7 @@ static NSString *YZStringFromObject(id object, NSSet *visited);
     UIImage *embedded = YZEmbeddedDonationImage();
     if (embedded) return embedded;
 
-    NSArray *paths = @[
+    NSArray<NSString *> *paths = @[
         @"/var/jb/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
         @"/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
         @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
@@ -46,271 +41,196 @@ static NSString *YZStringFromObject(id object, NSSet *visited);
         @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
         @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
     ];
+
     for (NSString *path in paths) {
-        UIImage *img = [UIImage imageWithContentsOfFile:path];
-        if (img) {
-            NSLog(@"[小杳知] 赞赏码加载: %@", path);
-            return img;
-        }
-    }
-    NSLog(@"[小杳知] 赞赏码未找到，检查路径: %@", paths);
-    return nil;
-}
-
-+ (NSString *)temporaryRewardImagePath {
-    UIImage *image = [self loadRewardImage];
-    if (!image) return nil;
-
-    NSData *data = UIImagePNGRepresentation(image);
-    if (!data) data = UIImageJPEGRepresentation(image, 0.92);
-    if (!data) return nil;
-
-    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"xiaoyaozhi_reward_qr.png"];
-    return [data writeToFile:path atomically:YES] ? path : nil;
-}
-
-+ (NSString *)stringByExtractingURLFromObject:(id)object {
-    NSString *text = YZStringFromObject(object, [NSSet set]);
-    if (text.length == 0) return nil;
-
-    NSArray<NSString *> *prefixes = @[@"wxp://", @"weixin://", @"https://", @"http://"];
-    for (NSString *prefix in prefixes) {
-        NSRange start = [text rangeOfString:prefix options:NSCaseInsensitiveSearch];
-        if (start.location == NSNotFound) continue;
-
-        NSUInteger index = start.location;
-        NSUInteger end = index;
-        NSCharacterSet *stop = [NSCharacterSet characterSetWithCharactersInString:@" \n\r\t\"'<>，。；;）)】]"];
-        while (end < text.length) {
-            unichar ch = [text characterAtIndex:end];
-            if ([stop characterIsMember:ch]) break;
-            end++;
-        }
-        if (end > index) {
-            return [text substringWithRange:NSMakeRange(index, end - index)];
-        }
+        UIImage *image = [UIImage imageWithContentsOfFile:path];
+        if (image) return image;
     }
     return nil;
 }
 
-+ (id)invokeSelector:(SEL)selector onTarget:(id)target withObject:(id)object {
++ (id)allocInitClassNamed:(NSString *)className {
+    Class cls = NSClassFromString(className);
+    if (!cls) return nil;
+
+    @try {
+        id object = [[cls alloc] init];
+        return object;
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] 初始化 %@ 失败: %@", className, exception);
+        return nil;
+    }
+}
+
++ (id)invokeSelector:(SEL)selector target:(id)target arguments:(NSArray *)arguments {
     if (!target || ![target respondsToSelector:selector]) return nil;
 
     NSMethodSignature *signature = [target methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments < 3) return nil;
+    if (!signature) return nil;
+
+    NSUInteger expected = signature.numberOfArguments > 2 ? signature.numberOfArguments - 2 : 0;
+    if (arguments.count < expected) return nil;
 
     NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
     invocation.target = target;
     invocation.selector = selector;
-    id argument = object;
-    [invocation setArgument:&argument atIndex:2];
+
+    for (NSUInteger i = 0; i < expected; i++) {
+        const char *type = [signature getArgumentTypeAtIndex:i + 2];
+        id value = [arguments objectAtIndex:i];
+
+        if (type && (strcmp(type, @encode(BOOL)) == 0 || strcmp(type, "B") == 0)) {
+            BOOL boolValue = [value boolValue];
+            [invocation setArgument:&boolValue atIndex:i + 2];
+        } else if (type && (strcmp(type, @encode(int)) == 0 || strcmp(type, @encode(unsigned int)) == 0)) {
+            int intValue = [value intValue];
+            [invocation setArgument:&intValue atIndex:i + 2];
+        } else if (type && (strcmp(type, @encode(NSInteger)) == 0 || strcmp(type, @encode(NSUInteger)) == 0 || strcmp(type, @encode(long long)) == 0 || strcmp(type, @encode(unsigned long long)) == 0)) {
+            NSInteger integerValue = [value integerValue];
+            [invocation setArgument:&integerValue atIndex:i + 2];
+        } else {
+            id objectValue = value == (id)kCFNull ? nil : value;
+            [invocation setArgument:&objectValue atIndex:i + 2];
+        }
+    }
 
     @try {
         [invocation invoke];
         const char *returnType = signature.methodReturnType;
         if (!returnType || returnType[0] == 'v') return nil;
+
         __unsafe_unretained id result = nil;
         [invocation getReturnValue:&result];
         return result;
     } @catch (NSException *exception) {
-        NSLog(@"[小杳知] 微信扫码解析调用失败 %@: %@", NSStringFromSelector(selector), exception);
+        NSLog(@"[小杳知] 调用 %@ 失败: %@", NSStringFromSelector(selector), exception);
         return nil;
     }
 }
 
-+ (NSString *)decodeRewardQRCodeWithWeChatParser {
-    NSString *path = [self temporaryRewardImagePath];
-    if (path.length == 0) return nil;
++ (id)newLogicParams {
+    id params = [self allocInitClassNamed:@"ScanQRCodeLogicParams"];
+    if (!params) return nil;
 
-    NSArray<NSString *> *classNames = @[
-        @"ScanQRCodeLogicController",
-        @"ScanQRCodeResultsMgr",
-        @"NewQRCodeScanner",
-        @"NewQRCodeScannerParams"
-    ];
-    NSArray<NSString *> *selectorNames = @[
-        @"GetMessageFromImage:",
-        @"getMessageFromImage:",
-        @"scanImage:",
-        @"scanQRCodeImage:",
-        @"scanQRCodeImageAtPath:"
-    ];
+    SEL initWithCodeTypeFromScene = NSSelectorFromString(@"initWithCodeType:fromScene:");
+    if ([params respondsToSelector:initWithCodeTypeFromScene]) {
+        id result = [self invokeSelector:initWithCodeTypeFromScene target:params arguments:@[@27, @2]];
+        if (result) return result;
+    }
 
-    UIImage *image = [UIImage imageWithContentsOfFile:path];
-    NSArray *arguments = image ? @[path, image] : @[path];
+    SEL initWithCodeType = NSSelectorFromString(@"initWithCodeType:");
+    if ([params respondsToSelector:initWithCodeType]) {
+        id result = [self invokeSelector:initWithCodeType target:params arguments:@[@27]];
+        if (result) return result;
+    }
+    return params;
+}
 
-    for (NSString *className in classNames) {
-        Class cls = NSClassFromString(className);
-        if (!cls) continue;
++ (id)newScannerParams {
+    id params = [self allocInitClassNamed:@"NewQRCodeScannerParams"];
+    if (!params) return nil;
 
-        NSMutableArray *targets = [NSMutableArray arrayWithObject:cls];
-        @try {
-            id instance = [[cls alloc] init];
-            if (instance) [targets addObject:instance];
-        } @catch (__unused NSException *exception) {}
+    SEL initWithCodeType = NSSelectorFromString(@"initWithCodeType:");
+    if ([params respondsToSelector:initWithCodeType]) {
+        id result = [self invokeSelector:initWithCodeType target:params arguments:@[@27]];
+        if (result) return result;
+    }
+    return params;
+}
 
-        for (id target in targets) {
-            for (NSString *selectorName in selectorNames) {
-                SEL selector = NSSelectorFromString(selectorName);
-                for (id argument in arguments) {
-                    id result = [self invokeSelector:selector onTarget:target withObject:argument];
-                    NSString *url = [self stringByExtractingURLFromObject:result];
-                    if (url.length > 0) {
-                        NSLog(@"[小杳知] 微信内部扫码解析成功: %@", url);
-                        return url;
-                    }
-                }
-            }
++ (id)scanResultsManager {
+    Class mgrClass = NSClassFromString(@"ScanQRCodeResultsMgr");
+    if (!mgrClass) return nil;
+
+    Class serviceCenterClass = NSClassFromString(@"MMServiceCenter");
+    SEL defaultCenter = NSSelectorFromString(@"defaultCenter");
+    SEL getService = NSSelectorFromString(@"getService:");
+    if ([serviceCenterClass respondsToSelector:defaultCenter]) {
+        id center = [self invokeSelector:defaultCenter target:serviceCenterClass arguments:@[]];
+        if ([center respondsToSelector:getService]) {
+            id service = [self invokeSelector:getService target:center arguments:@[mgrClass]];
+            if (service) return service;
         }
     }
-    return nil;
+
+    return [self allocInitClassNamed:@"ScanQRCodeResultsMgr"];
 }
 
-+ (NSString *)decodeQRCodeFromImage:(UIImage *)image {
-    CIImage *ciImage = [[CIImage alloc] initWithImage:image];
-    if (!ciImage) return nil;
++ (id)newLogicControllerWithViewController:(UIViewController *)viewController logicParams:(id)logicParams {
+    id controller = [self allocInitClassNamed:@"ScanQRCodeLogicController"];
+    if (!controller) return nil;
 
-    CIDetector *detector = [CIDetector detectorOfType:CIDetectorTypeQRCode
-                                              context:nil
-                                              options:@{CIDetectorAccuracy: CIDetectorAccuracyHigh}];
-    NSArray<CIQRCodeFeature *> *features = (NSArray<CIQRCodeFeature *> *)[detector featuresInImage:ciImage];
-    for (CIQRCodeFeature *feature in features) {
-        if (feature.messageString.length > 0) {
-            NSLog(@"[小杳知] 解码成功: %@", feature.messageString);
-            return feature.messageString;
-        }
+    SEL initSelector = NSSelectorFromString(@"initWithViewController:logicParams:");
+    if ([controller respondsToSelector:initSelector]) {
+        id result = [self invokeSelector:initSelector target:controller arguments:@[viewController ?: (id)kCFNull, logicParams ?: (id)kCFNull]];
+        if (result) return result;
     }
-    return nil;
+    return controller;
 }
 
-+ (UIImage *)croppedImage:(UIImage *)image rect:(CGRect)rect {
-    CGImageRef source = image.CGImage;
-    if (!source) return nil;
++ (id)newScannerWithDelegate:(id)delegate scannerParams:(id)scannerParams {
+    id scanner = [self allocInitClassNamed:@"NewQRCodeScanner"];
+    if (!scanner) return nil;
 
-    CGFloat scale = image.scale > 0 ? image.scale : 1.0;
-    CGRect pixelRect = CGRectMake(rect.origin.x * scale,
-                                  rect.origin.y * scale,
-                                  rect.size.width * scale,
-                                  rect.size.height * scale);
-    pixelRect = CGRectIntersection(pixelRect, CGRectMake(0, 0, CGImageGetWidth(source), CGImageGetHeight(source)));
-    if (CGRectIsEmpty(pixelRect)) return nil;
-
-    CGImageRef cropped = CGImageCreateWithImageInRect(source, pixelRect);
-    if (!cropped) return nil;
-
-    UIImage *result = [UIImage imageWithCGImage:cropped scale:image.scale orientation:image.imageOrientation];
-    CGImageRelease(cropped);
-    return result;
+    SEL initSelector = NSSelectorFromString(@"initWithDelegate:scannerParams:");
+    if ([scanner respondsToSelector:initSelector]) {
+        id result = [self invokeSelector:initSelector target:scanner arguments:@[delegate ?: (id)kCFNull, scannerParams ?: (id)kCFNull]];
+        if (result) return result;
+    }
+    return scanner;
 }
 
-+ (NSArray<UIImage *> *)rewardDecodeCandidatesFromImage:(UIImage *)image {
-    if (!image) return @[];
++ (BOOL)scanRewardImageWithWeChat:(UIImage *)image {
+    if (!image) return NO;
 
-    NSMutableArray<UIImage *> *candidates = [NSMutableArray arrayWithObject:image];
-    CGFloat w = image.size.width;
-    CGFloat h = image.size.height;
-    CGFloat shortSide = MIN(w, h);
-
-    NSArray<NSValue *> *rects = @[
-        [NSValue valueWithCGRect:CGRectMake(w * 0.22, h * 0.12, shortSide * 0.58, shortSide * 0.58)],
-        [NSValue valueWithCGRect:CGRectMake(w * 0.18, h * 0.10, shortSide * 0.66, shortSide * 0.66)],
-        [NSValue valueWithCGRect:CGRectMake(w * 0.24, h * 0.16, shortSide * 0.52, shortSide * 0.52)],
-        [NSValue valueWithCGRect:CGRectMake(0, 0, w, h * 0.68)]
-    ];
-
-    for (NSValue *value in rects) {
-        UIImage *cropped = [self croppedImage:image rect:value.CGRectValue];
-        if (cropped) [candidates addObject:cropped];
-    }
-    return candidates;
-}
-
-+ (NSString *)decodeRewardQRCode {
-    NSString *wechatURL = [self decodeRewardQRCodeWithWeChatParser];
-    if (wechatURL.length > 0) return wechatURL;
-
-    UIImage *image = [self loadRewardImage];
-    for (UIImage *candidate in [self rewardDecodeCandidatesFromImage:image]) {
-        NSString *url = [self decodeQRCodeFromImage:candidate];
-        if (url.length > 0) return url;
-    }
-    return nil;
-}
-
-+ (BOOL)invokeQRCodeLandingOnTarget:(id)target urlString:(NSString *)urlString {
-    if (!target || urlString.length == 0) return NO;
-    SEL selector = NSSelectorFromString(@"openQRCodeOrWXCodeLandingPage:isShowMultiCodes:businessScene:");
-    if (![target respondsToSelector:selector]) return NO;
-
-    NSMethodSignature *signature = [target methodSignatureForSelector:selector];
-    if (!signature || signature.numberOfArguments < 5) return NO;
-
-    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
-    invocation.target = target;
-    invocation.selector = selector;
-    NSString *landingURL = urlString;
-    BOOL showMultiCodes = NO;
-    NSInteger businessScene = 0;
-    [invocation setArgument:&landingURL atIndex:2];
-    [invocation setArgument:&showMultiCodes atIndex:3];
-    [invocation setArgument:&businessScene atIndex:4];
-    @try {
-        [invocation invoke];
-        return YES;
-    } @catch (NSException *exception) {
-        NSLog(@"[小杳知] 赞赏码内部跳转失败: %@", exception);
-        return NO;
-    }
-}
-
-+ (BOOL)openQRCodeLandingIfPossible:(NSString *)urlString {
-    Class scannerClass = NSClassFromString(@"ScanQRCodeLogicController");
-    if ([self invokeQRCodeLandingOnTarget:scannerClass urlString:urlString]) return YES;
-
-    id scanner = nil;
-    @try {
-        scanner = [[scannerClass alloc] init];
-    } @catch (__unused NSException *exception) {
-        scanner = nil;
-    }
-    return [self invokeQRCodeLandingOnTarget:scanner urlString:urlString];
-}
-
-+ (void)openRewardURL:(NSString *)urlString fallback:(void (^)(void))fallback {
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) {
-        if (fallback) fallback();
-        return;
+    UIViewController *imageController = [self allocInitClassNamed:@"MsgImgFullScreenViewController"];
+    if (![imageController isKindOfClass:UIViewController.class]) {
+        imageController = [[UIViewController alloc] init];
     }
 
-    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    [gen impactOccurred];
+    id logicParams = [self newLogicParams];
+    id scannerParams = [self newScannerParams];
+    id logicController = [self newLogicControllerWithViewController:imageController logicParams:logicParams];
+    id resultsManager = [self scanResultsManager];
 
-    if ([self openQRCodeLandingIfPossible:urlString]) {
-        return;
+    SEL setScanLogicController = NSSelectorFromString(@"setScanLogicController:");
+    if ([resultsManager respondsToSelector:setScanLogicController] && logicController) {
+        [self invokeSelector:setScanLogicController target:resultsManager arguments:@[logicController]];
     }
 
-    // 在微信进程内，openURL 会被微信的 URL handler 拦截处理
-    [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:^(BOOL success) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!success) {
-                [self showToast:@"跳转失败，请长按保存赞赏码后扫码"];
-                if (fallback) fallback();
-            }
-        });
-    }];
+    id scanner = [self newScannerWithDelegate:(resultsManager ?: logicController) scannerParams:scannerParams];
+    if (!scanner) return NO;
+
+    SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
+    if (![scanner respondsToSelector:scanOnePicture]) return NO;
+
+    [self invokeSelector:scanOnePicture target:scanner arguments:@[image]];
+
+    if ([imageController respondsToSelector:@selector(addChildViewController:)] && [scanner isKindOfClass:UIViewController.class]) {
+        [imageController addChildViewController:(UIViewController *)scanner];
+        [(UIViewController *)scanner didMoveToParentViewController:imageController];
+    }
+
+    return YES;
 }
 
 + (void)showToast:(NSString *)msg {
     if (msg.length == 0) return;
     UIWindow *keyWindow = nil;
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
-            for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-                if (w.isKeyWindow) { keyWindow = w; break; }
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
+                for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                    if (window.isKeyWindow) { keyWindow = window; break; }
+                }
+                if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+                break;
             }
-            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-            break;
+        }
+    } else {
+        id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
+        if ([delegate respondsToSelector:@selector(window)]) {
+            keyWindow = delegate.window;
         }
     }
     if (!keyWindow) return;
@@ -325,63 +245,26 @@ static NSString *YZStringFromObject(id object, NSSet *visited);
     toast.clipsToBounds = YES;
     toast.alpha = 0;
 
-    CGSize s = [msg boundingRectWithSize:CGSizeMake(260, 60) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName: toast.font} context:nil].size;
-    toast.frame = CGRectMake((keyWindow.bounds.size.width - MIN(ceil(s.width) + 36, 280)) / 2.0,
+    CGSize size = [msg boundingRectWithSize:CGSizeMake(260, 60)
+                                    options:NSStringDrawingUsesLineFragmentOrigin
+                                 attributes:@{NSFontAttributeName: toast.font}
+                                    context:nil].size;
+    CGFloat width = MIN(ceil(size.width) + 36, 280);
+    toast.frame = CGRectMake((keyWindow.bounds.size.width - width) / 2.0,
                              keyWindow.bounds.size.height - 140,
-                             MIN(ceil(s.width) + 36, 280), ceil(s.height) + 20);
+                             width,
+                             ceil(size.height) + 20);
     [keyWindow addSubview:toast];
 
-    [UIView animateWithDuration:0.22 animations:^{ toast.alpha = 1; } completion:^(BOOL d) {
-        [UIView animateWithDuration:0.22 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{ toast.alpha = 0; } completion:^(BOOL d2) { [toast removeFromSuperview]; }];
+    [UIView animateWithDuration:0.22 animations:^{
+        toast.alpha = 1;
+    } completion:^(__unused BOOL finished) {
+        [UIView animateWithDuration:0.22 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{
+            toast.alpha = 0;
+        } completion:^(__unused BOOL finished2) {
+            [toast removeFromSuperview];
+        }];
     }];
 }
 
 @end
-
-static NSString *YZStringFromObject(id object, NSSet *visited) {
-    if (!object || object == (id)kCFNull) return nil;
-    if ([object isKindOfClass:NSString.class]) return object;
-    if ([object isKindOfClass:NSURL.class]) return [(NSURL *)object absoluteString];
-    if ([object isKindOfClass:NSData.class]) {
-        NSString *string = [[NSString alloc] initWithData:object encoding:NSUTF8StringEncoding];
-        return string;
-    }
-
-    NSValue *pointer = [NSValue valueWithNonretainedObject:object];
-    if ([visited containsObject:pointer]) return nil;
-    NSMutableSet *nextVisited = [visited mutableCopy] ?: [NSMutableSet set];
-    [nextVisited addObject:pointer];
-
-    if ([object isKindOfClass:NSDictionary.class]) {
-        NSMutableArray *parts = [NSMutableArray array];
-        [(NSDictionary *)object enumerateKeysAndObjectsUsingBlock:^(id key, id value, __unused BOOL *stop) {
-            NSString *keyString = YZStringFromObject(key, nextVisited);
-            NSString *valueString = YZStringFromObject(value, nextVisited);
-            if (keyString) [parts addObject:keyString];
-            if (valueString) [parts addObject:valueString];
-        }];
-        return [parts componentsJoinedByString:@" "];
-    }
-
-    if ([object isKindOfClass:NSArray.class] || [object isKindOfClass:NSSet.class]) {
-        NSMutableArray *parts = [NSMutableArray array];
-        for (id value in object) {
-            NSString *valueString = YZStringFromObject(value, nextVisited);
-            if (valueString) [parts addObject:valueString];
-        }
-        return [parts componentsJoinedByString:@" "];
-    }
-
-    for (NSString *key in @[@"nativeUrl", @"m_c2cNativeUrl", @"url", @"m_nsUrl", @"m_nsContent", @"messageString"]) {
-        @try {
-            id value = [object valueForKey:key];
-            NSString *valueString = YZStringFromObject(value, nextVisited);
-            if (valueString.length > 0) return valueString;
-        } @catch (__unused NSException *exception) {}
-    }
-
-    if ([object respondsToSelector:@selector(description)]) {
-        return [object description];
-    }
-    return nil;
-}
