@@ -180,12 +180,87 @@ extern UIImage *YZEmbeddedDonationImage(void);
     return scanner;
 }
 
++ (UIViewController *)topViewController {
+    UIWindow *keyWindow = nil;
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                if (window.isKeyWindow) { keyWindow = window; break; }
+            }
+            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+            if (keyWindow) break;
+        }
+    } else {
+        id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
+        if ([delegate respondsToSelector:@selector(window)]) {
+            keyWindow = delegate.window;
+        }
+    }
+
+    UIViewController *controller = keyWindow.rootViewController;
+    while (controller.presentedViewController) controller = controller.presentedViewController;
+    while ([controller isKindOfClass:UINavigationController.class]) controller = ((UINavigationController *)controller).topViewController;
+    while ([controller isKindOfClass:UITabBarController.class]) controller = ((UITabBarController *)controller).selectedViewController;
+    return controller;
+}
+
++ (UIImage *)croppedImage:(UIImage *)image rect:(CGRect)rect {
+    CGImageRef source = image.CGImage;
+    if (!source) return nil;
+
+    CGFloat scale = image.scale > 0 ? image.scale : 1.0;
+    CGRect pixelRect = CGRectMake(rect.origin.x * scale,
+                                  rect.origin.y * scale,
+                                  rect.size.width * scale,
+                                  rect.size.height * scale);
+    pixelRect = CGRectIntersection(pixelRect, CGRectMake(0, 0, CGImageGetWidth(source), CGImageGetHeight(source)));
+    if (CGRectIsEmpty(pixelRect)) return nil;
+
+    CGImageRef cropped = CGImageCreateWithImageInRect(source, pixelRect);
+    if (!cropped) return nil;
+
+    UIImage *result = [UIImage imageWithCGImage:cropped scale:image.scale orientation:image.imageOrientation];
+    CGImageRelease(cropped);
+    return result;
+}
+
++ (UIImage *)rewardScanImageFromImage:(UIImage *)image {
+    if (!image) return nil;
+
+    CGFloat w = image.size.width;
+    CGFloat h = image.size.height;
+    CGFloat side = MIN(w, h) * 0.50;
+    CGRect rect = CGRectMake((w - side) / 2.0, h * 0.13, side, side);
+    UIImage *cropped = [self croppedImage:image rect:rect];
+    return cropped ?: image;
+}
+
++ (void)cleanupHiddenImageController:(UIViewController *)imageController {
+    if (!imageController.parentViewController) return;
+
+    [imageController willMoveToParentViewController:nil];
+    [imageController.view removeFromSuperview];
+    [imageController removeFromParentViewController];
+}
+
 + (BOOL)scanRewardImageWithWeChat:(UIImage *)image {
     if (!image) return NO;
+    UIImage *scanImage = [self rewardScanImageFromImage:image];
 
     UIViewController *imageController = [self allocInitClassNamed:@"MsgImgFullScreenViewController"];
     if (![imageController isKindOfClass:UIViewController.class]) {
         imageController = [[UIViewController alloc] init];
+    }
+
+    UIViewController *hostController = [self topViewController];
+    if (hostController) {
+        [hostController addChildViewController:imageController];
+        imageController.view.frame = CGRectMake(-4, -4, 2, 2);
+        imageController.view.alpha = 0.01;
+        imageController.view.userInteractionEnabled = NO;
+        [hostController.view addSubview:imageController.view];
+        [imageController didMoveToParentViewController:hostController];
     }
 
     id logicParams = [self newLogicParams];
@@ -199,17 +274,27 @@ extern UIImage *YZEmbeddedDonationImage(void);
     }
 
     id scanner = [self newScannerWithDelegate:(resultsManager ?: logicController) scannerParams:scannerParams];
-    if (!scanner) return NO;
+    if (!scanner) {
+        [self cleanupHiddenImageController:imageController];
+        return NO;
+    }
 
     SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
-    if (![scanner respondsToSelector:scanOnePicture]) return NO;
-
-    [self invokeSelector:scanOnePicture target:scanner arguments:@[image]];
+    if (![scanner respondsToSelector:scanOnePicture]) {
+        [self cleanupHiddenImageController:imageController];
+        return NO;
+    }
 
     if ([imageController respondsToSelector:@selector(addChildViewController:)] && [scanner isKindOfClass:UIViewController.class]) {
         [imageController addChildViewController:(UIViewController *)scanner];
         [(UIViewController *)scanner didMoveToParentViewController:imageController];
     }
+
+    [self invokeSelector:scanOnePicture target:scanner arguments:@[scanImage ?: image]];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self cleanupHiddenImageController:imageController];
+    });
 
     return YES;
 }
