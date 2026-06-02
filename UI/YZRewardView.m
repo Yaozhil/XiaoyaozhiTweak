@@ -62,19 +62,24 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
     BOOL found = NO;
     for (unsigned int i = 0; i < count && !found; i++) {
-        SEL sel = NSSelectorFromString(@"jumpToOfflinePayWithEntryVC:");
-        if (![classes[i] respondsToSelector:sel] && ![classes[i] instancesRespondToSelector:sel]) continue;
+        const char *name = class_getName(classes[i]);
+        if (!name) continue;
+        NSString *className = [NSString stringWithUTF8String:name];
 
+        // 仅搜索支付/转账相关类，避免遍历所有类
+        if ([className rangeOfString:@"Pay" options:NSCaseInsensitiveSearch].location == NSNotFound &&
+            [className rangeOfString:@"Transfer" options:NSCaseInsensitiveSearch].location == NSNotFound &&
+            [className rangeOfString:@"Receipt" options:NSCaseInsensitiveSearch].location == NSNotFound) {
+            continue;
+        }
+
+        SEL sel = NSSelectorFromString(@"jumpToOfflinePayWithEntryVC:");
         @try {
-            id target = nil;
+            // 仅尝试类方法，不 alloc 实例
             if ([classes[i] respondsToSelector:sel]) {
-                target = classes[i];
-            } else {
-                target = [[classes[i] alloc] init];
-                if (!target) continue;
+                ((void (*)(id, SEL, id))objc_msgSend)(classes[i], sel, host);
+                found = YES;
             }
-            ((void (*)(id, SEL, id))objc_msgSend)(target, sel, host);
-            found = YES;
         } @catch (__unused NSException *e) {
             continue;
         }
