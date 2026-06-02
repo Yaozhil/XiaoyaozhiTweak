@@ -803,7 +803,7 @@ static NSDictionary *sEntitlementsCache = nil;
     [card addSubview:title];
 
     UILabel *recipient = [[UILabel alloc] initWithFrame:CGRectMake(24, 52, width - 48, 22)];
-    recipient.text = @"赞赏对象：杏杏";
+    recipient.text = @"赞赏对象：杳杳";
     recipient.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
     recipient.textAlignment = NSTextAlignmentCenter;
     recipient.textColor = [UIColor colorWithRed:0.78 green:0.56 blue:0.12 alpha:1.0];

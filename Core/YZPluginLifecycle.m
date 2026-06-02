@@ -43,7 +43,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 }
 
 - (NSString *)pluginVersion {
-    return @"1.1.6";
+    return @"1.1.7";
 }
 
 - (NSString *)pluginDisplayName {
