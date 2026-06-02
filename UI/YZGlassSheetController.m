@@ -202,11 +202,11 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     label.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [self.followCard addSubview:label];
 
-    self.followDot = [[UIView alloc] initWithFrame:CGRectMake(cardW - 88, 20, 8, 8)];
+    self.followDot = [[UIView alloc] initWithFrame:CGRectMake(cardW - 82, 20, 8, 8)];
     self.followDot.layer.cornerRadius = 4;
     [self.followCard addSubview:self.followDot];
 
-    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 74, 14, 60, 20)];
+    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 68, 14, 60, 20)];
     self.followStatusLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
     self.followStatusLabel.textAlignment = NSTextAlignmentLeft;
     [self.followCard addSubview:self.followStatusLabel];
