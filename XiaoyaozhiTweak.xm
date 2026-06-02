@@ -67,22 +67,21 @@ static BOOL YZIsTargetBundle(void) {
 static __attribute__((unused)) UIWindow *YZKeyWindow(void) {
     UIApplication *app = UIApplication.sharedApplication;
 
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in app.connectedScenes) {
-            if (![scene isKindOfClass:UIWindowScene.class]) continue;
-            if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+    for (UIScene *scene in app.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
 
-            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                if (window.isKeyWindow && window.rootViewController) return window;
-            }
+        UIWindow *fallbackWindow = nil;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (!fallbackWindow && window.rootViewController) fallbackWindow = window;
+            if (window.isKeyWindow && window.rootViewController) return window;
         }
+        if (fallbackWindow) return fallbackWindow;
     }
 
-    for (UIWindow *window in app.windows) {
-        if (window.isKeyWindow && window.rootViewController) return window;
-    }
-
-    return app.windows.firstObject;
+    id<UIApplicationDelegate> delegate = app.delegate;
+    if ([delegate respondsToSelector:@selector(window)]) return delegate.window;
+    return nil;
 }
 
 static __attribute__((unused)) void YZShowGlassSheet(void) {

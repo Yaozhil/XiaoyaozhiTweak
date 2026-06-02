@@ -16,10 +16,18 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (void)openRewardPage {
-    [self openRewardPageWithFallback:nil];
+    [self openRewardPageFromViewController:nil fallback:nil];
+}
+
++ (void)openRewardPageFromViewController:(UIViewController *)viewController {
+    [self openRewardPageFromViewController:viewController fallback:nil];
 }
 
 + (void)openRewardPageWithFallback:(void (^)(void))fallback {
+    [self openRewardPageFromViewController:nil fallback:fallback];
+}
+
++ (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIImage *image = [self loadRewardImage];
         if (!image) {
@@ -28,7 +36,7 @@ extern UIImage *YZEmbeddedDonationImage(void);
             return;
         }
 
-        if ([self scanRewardImageWithWeChat:image]) {
+        if ([self scanRewardImage:image withWeChatFromViewController:viewController]) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
             return;
@@ -210,12 +218,29 @@ extern UIImage *YZEmbeddedDonationImage(void);
     }
 
     UIViewController *controller = keyWindow.rootViewController;
-    if ([controller isKindOfClass:UITabBarController.class]) {
-        controller = ((UITabBarController *)controller).selectedViewController;
-    }
-    if ([controller isKindOfClass:UINavigationController.class]) {
-        UIViewController *first = ((UINavigationController *)controller).viewControllers.firstObject;
-        if (first) controller = first;
+    BOOL advanced = YES;
+    while (controller && advanced) {
+        advanced = NO;
+        if ([controller isKindOfClass:UITabBarController.class]) {
+            UIViewController *selected = ((UITabBarController *)controller).selectedViewController;
+            if (selected) {
+                controller = selected;
+                advanced = YES;
+                continue;
+            }
+        }
+        if ([controller isKindOfClass:UINavigationController.class]) {
+            UIViewController *visible = ((UINavigationController *)controller).visibleViewController;
+            if (visible) {
+                controller = visible;
+                advanced = YES;
+                continue;
+            }
+        }
+        if (controller.presentedViewController) {
+            controller = controller.presentedViewController;
+            advanced = YES;
+        }
     }
     return controller;
 }
@@ -273,11 +298,11 @@ extern UIImage *YZEmbeddedDonationImage(void);
     return cropped ?: image;
 }
 
-+ (BOOL)scanRewardImageWithWeChat:(UIImage *)image {
++ (BOOL)scanRewardImage:(UIImage *)image withWeChatFromViewController:(UIViewController *)viewController {
     if (!image) return NO;
 
-    UIImage *scanImage = image;
-    UIViewController *hostController = [self rewardHostViewController];
+    UIImage *scanImage = [self rewardScanImageFromImage:image] ?: image;
+    UIViewController *hostController = viewController ?: [self rewardHostViewController];
 
     id logicParams = [self newLogicParams];
     id scannerParams = [self newScannerParams];

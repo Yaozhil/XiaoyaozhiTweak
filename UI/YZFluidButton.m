@@ -92,10 +92,8 @@
 
 - (void)setSymbolName:(NSString *)symbolName {
     _symbolName = [symbolName copy];
-    if (@available(iOS 13.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
-        self.symbolImageView.image = [UIImage systemImageNamed:symbolName withConfiguration:config];
-    }
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightMedium];
+    self.symbolImageView.image = [UIImage systemImageNamed:symbolName withConfiguration:config];
     [self setNeedsLayout];
 }
 

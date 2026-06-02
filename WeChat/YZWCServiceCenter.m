@@ -423,11 +423,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (void)fetchSelfAvatarWithCompletion:(void(^)(UIImage *avatar))completion {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    dispatch_async(dispatch_get_main_queue(), ^{
         UIImage *avatar = [self getSelfAvatar];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(avatar);
-        });
+        if (completion) completion(avatar);
     });
 }
 

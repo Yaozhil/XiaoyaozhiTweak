@@ -4,6 +4,8 @@
 @interface YZRewardView : NSObject
 
 + (void)openRewardPage;
++ (void)openRewardPageFromViewController:(UIViewController *)viewController;
 + (void)openRewardPageWithFallback:(void (^)(void))fallback;
++ (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback;
 
 @end

@@ -10,6 +10,24 @@
 
 @implementation YZEnvironmentDetector
 
+static UIWindow *YZEnvironmentCurrentWindow(void) {
+    UIApplication *app = UIApplication.sharedApplication;
+    for (UIScene *scene in app.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+        UIWindow *fallbackWindow = nil;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (!fallbackWindow) fallbackWindow = window;
+            if (window.isKeyWindow) return window;
+        }
+        if (fallbackWindow) return fallbackWindow;
+    }
+
+    id<UIApplicationDelegate> delegate = app.delegate;
+    if ([delegate respondsToSelector:@selector(window)]) return delegate.window;
+    return nil;
+}
+
 + (instancetype)shared {
     static YZEnvironmentDetector *instance;
     static dispatch_once_t onceToken;
@@ -57,50 +75,19 @@
     if (self.deviceModel != YZDeviceModeliPhone) return;
     if (self.displayType != YZDisplayTypeUnknown && self.displayType != YZDisplayTypeClassic) return; // 已检测过
 
-    UIWindow *window = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:UIWindowScene.class] && ((UIWindowScene *)scene).windows.count > 0) {
-                window = ((UIWindowScene *)scene).windows.firstObject;
-                break;
-            }
-        }
-    }
-    if (!window) window = UIApplication.sharedApplication.windows.firstObject;
+    UIWindow *window = YZEnvironmentCurrentWindow();
 
     self.displayType = (window.safeAreaInsets.bottom > 0) ? YZDisplayTypeNotch : YZDisplayTypeClassic;
     NSLog(@"[小杳知] 屏幕类型检测完成: %@", self.displayType == YZDisplayTypeNotch ? @"全面屏" : @"非全面屏");
 }
 
 - (CGFloat)safeAreaBottomInset {
-    UIWindow *window = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:UIWindowScene.class]) {
-                window = ((UIWindowScene *)scene).windows.firstObject;
-                break;
-            }
-        }
-    }
-    if (!window) {
-        window = UIApplication.sharedApplication.windows.firstObject;
-    }
+    UIWindow *window = YZEnvironmentCurrentWindow();
     return window.safeAreaInsets.bottom;
 }
 
 - (CGFloat)safeAreaTopInset {
-    UIWindow *window = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:UIWindowScene.class]) {
-                window = ((UIWindowScene *)scene).windows.firstObject;
-                break;
-            }
-        }
-    }
-    if (!window) {
-        window = UIApplication.sharedApplication.windows.firstObject;
-    }
+    UIWindow *window = YZEnvironmentCurrentWindow();
     return window.safeAreaInsets.top;
 }
 

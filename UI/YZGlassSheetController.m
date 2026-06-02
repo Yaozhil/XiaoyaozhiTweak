@@ -80,6 +80,15 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self restoreInteractivePopGesture];
 }
 
+- (void)dealloc {
+    self.tableView.delegate = nil;
+    self.tableView.dataSource = nil;
+    [self.view.layer removeAllAnimations];
+    [self.followCard.layer removeAllAnimations];
+    [self.followDot.layer removeAllAnimations];
+    [self restoreInteractivePopGesture];
+}
+
 #pragma mark - Main UI
 
 - (void)buildMainUI {
@@ -533,22 +542,12 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     container.userInteractionEnabled = NO;
 
     UIColor *muted = [UIColor colorWithWhite:0.72 alpha:1.0];
-    if (@available(iOS 13.0, *)) {
-        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
-        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 14, 12, 20)];
-        imageView.contentMode = UIViewContentModeScaleAspectFit;
-        imageView.tintColor = muted;
-        imageView.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:config];
-        [container addSubview:imageView];
-        return container;
-    }
-
-    UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(8, 10, 16, 28)];
-    label.text = @"›";
-    label.font = [UIFont systemFontOfSize:22 weight:UIFontWeightRegular];
-    label.textColor = muted;
-    label.textAlignment = NSTextAlignmentCenter;
-    [container addSubview:label];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 14, 12, 20)];
+    imageView.contentMode = UIViewContentModeScaleAspectFit;
+    imageView.tintColor = muted;
+    imageView.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:config];
+    [container addSubview:imageView];
     return container;
 }
 
@@ -955,16 +954,12 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)refreshFollowStatus {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        BOOL followed = [YZWCServiceCenter isBrandFollowing:kGHUserName];
-        self.isFollowed = followed;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self updateFollowUI];
-        });
-    });
+    self.isFollowed = [YZWCServiceCenter isBrandFollowing:kGHUserName];
+    [self updateFollowUI];
 }
 
 - (void)updateFollowUI {
+    if (!self.followStatusLabel || !self.followDot) return;
     if (self.isFollowed) {
         self.followStatusLabel.text = @"已关注";
         self.followStatusLabel.textColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
@@ -977,7 +972,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)showRewardSheet {
-    [YZRewardView openRewardPageWithFallback:nil];
+    [YZRewardView openRewardPageFromViewController:self fallback:nil];
 }
 
 - (void)handleFollowTap {
@@ -1036,24 +1031,21 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)presentFromTopViewController {
     UIWindow *keyWindow = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
-                for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                    if (window.isKeyWindow) {
-                        keyWindow = window;
-                        break;
-                    }
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                if (window.isKeyWindow) {
+                    keyWindow = window;
+                    break;
                 }
-                if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-                break;
             }
+            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+            break;
         }
-    } else {
+    }
+    if (!keyWindow) {
         id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
-        if ([delegate respondsToSelector:@selector(window)]) {
-            keyWindow = delegate.window;
-        }
+        if ([delegate respondsToSelector:@selector(window)]) keyWindow = delegate.window;
     }
     [self presentInWindow:keyWindow];
 }
@@ -1072,14 +1064,6 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (localAvatar && self.avatarView) {
         self.avatarView.image = localAvatar;
     }
-
-    __weak typeof(self) weakSelf = self;
-    [YZWCServiceCenter fetchSelfAvatarWithCompletion:^(UIImage *avatar) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        UIImage *resolved = avatar ?: [strongSelf avatarFromWeChatNavigationStack];
-        if (resolved) strongSelf.avatarView.image = resolved;
-    }];
 }
 
 @end

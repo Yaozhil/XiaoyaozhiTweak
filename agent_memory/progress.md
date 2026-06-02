@@ -5,7 +5,7 @@
 - 点击“投喂一下”后不再卡死，尽量复刻 WCEhance 的微信内部赞赏扫码链路。
 - 使用用户当前赞赏码作为内嵌图和安装资源。
 - 使用用户提供的左下角图标，处理为透明 PNG。
-- 版本号同步到 `1.2.7`，便于和卡死的 `1.2.6` 区分。
+- 版本号同步到 `1.2.8`，便于和卡死的 `1.2.7` 区分。
 
 ## 范围边界
 
@@ -19,9 +19,13 @@
 - 已移除 1.2.6 中基于 WCRefine 的扫码来源 hook，避免继续卡住微信结果链路。
 - 已把内嵌赞赏码和安装资源统一为用户提供的图片。
 - 已将左下角图标处理成透明 PNG，并同步外部资源与内嵌图。
-- 已将版本号同步到 `1.2.7`。
+- 已将版本号同步到 `1.2.8`。
 - 已检查本机、PortableGit bash 与 WSL 状态：当前没有可用 Theos 构建环境。
 - 已根据 Actions 日志修复 Xcode 16.4 将 `UIApplication.keyWindow` 弃用警告作为错误导致的构建失败。
+- 本轮根据用户真机反馈继续修正：投喂仍卡死、左下角图标缺块、功能列表长时间停留会导致微信闪退。
+- 已重新对照 WCEhance 的 `scanDonationQRCode`，确认其将当前控制器传给 `ScanQRCodeLogicController`，并按此改为从 `YZGlassSheetController(self)` 发起赞赏扫码。
+- 已将菜单页的关注状态/头像刷新从后台触碰微信私有对象改为页面主线程内完成，并移除停留期间的异步头像刷新回调。
+- 已重新用“边缘连通纯白背景”方式生成左下角透明 PNG，避免全图抠除白色导致头像缺块。
 
 ## 下一步
 
@@ -33,6 +37,7 @@
 
 - 已运行 `git diff --check`，无空白错误。
 - 已确认 `UI/YZRewardView.m` 不再直接调用 `UIApplication.keyWindow` 或 `UIApplication.windows`。
+- 已确认内嵌左下角图标与外部资源 SHA256 均为 `40EA1B6D992BAF713F7615E125C4C7BFF2814E6645A3E7B33D420177A6D5D4E7`。
 - 已验证赞赏码外部资源和内嵌资源 SHA256 均为 `B16087FC1311BD129A61AC511F8FC4030EDF124AC6B1DA00091173AF6977FD22`。
 - 已验证左下角图标外部资源和内嵌资源 SHA256 均为 `D2CB4ED679ACE616379939165A605F0FD65D3EAC6795C39A46845011102DA2D2`。
 - 已确认本机 Windows/PortableGit bash 没有 `make`、`clang`、`dpkg-deb`、`THEOS`，无法直接完成 Theos 构建验证。
