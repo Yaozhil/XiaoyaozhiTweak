@@ -308,7 +308,12 @@ extern UIImage *YZEmbeddedDonationImage(void);
     Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
     if (!scanClass) return NO;
 
-    id logicController = [[scanClass alloc] init];
+    // 创建扫码参数 (codeType: 27=支付码, fromScene: 2=相册)
+    id logicParams = [self newLogicParams];
+    if (!logicParams) return NO;
+
+    // 使用带参数的初始化
+    id logicController = [self newLogicControllerWithViewController:hostController logicParams:logicParams];
     if (!logicController) return NO;
 
     SEL setFromAlbumSel = NSSelectorFromString(@"setIsFromAlbum:");
@@ -321,21 +326,11 @@ extern UIImage *YZEmbeddedDonationImage(void);
         ((void (*)(id, SEL, NSInteger))objc_msgSend)(logicController, setPicFromSel, 1);
     }
 
-    SEL fromSceneSel = NSSelectorFromString(@"setFromScene:");
-    if ([logicController respondsToSelector:fromSceneSel]) {
-        ((void (*)(id, SEL, NSInteger))objc_msgSend)(logicController, fromSceneSel, 0);
-    }
-
-    SEL setHostVCSel = NSSelectorFromString(@"setHostViewController:");
-    if ([logicController respondsToSelector:setHostVCSel] && hostController) {
-        ((void (*)(id, SEL, id))objc_msgSend)(logicController, setHostVCSel, hostController);
-    }
-
     SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
     if (![logicController respondsToSelector:scanSel]) return NO;
 
     NSMutableArray *retained = [self activeScanObjects];
-    NSArray *scanObjects = @[logicController, scanImage];
+    NSArray *scanObjects = @[hostController ?: (id)kCFNull, logicParams, logicController, scanImage];
     [retained addObject:scanObjects];
 
     ((void (*)(id, SEL, id))objc_msgSend)(logicController, scanSel, scanImage);

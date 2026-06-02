@@ -294,7 +294,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.headerView addSubview:self.nameLabel];
 
     // 版本
-    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 54, w, 22)];
+    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 58, w, 22)];
     self.versionLabel.text = [NSString stringWithFormat:@"Version: %@", [YZPluginLifecycle sharedInstance].pluginVersion];
     self.versionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
     self.versionLabel.textAlignment = NSTextAlignmentCenter;
