@@ -5,5 +5,6 @@
 
 + (void)openRewardPage;
 + (void)openRewardPageWithFallback:(void (^)(void))fallback;
++ (BOOL)isRewardScanInProgress;
 
 @end

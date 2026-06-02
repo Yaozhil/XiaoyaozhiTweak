@@ -4,6 +4,8 @@
 
 extern UIImage *YZEmbeddedDonationImage(void);
 
+static BOOL sYZRewardScanInProgress = NO;
+
 @implementation YZRewardView
 
 + (NSMutableArray *)activeScanObjects {
@@ -37,6 +39,18 @@ extern UIImage *YZEmbeddedDonationImage(void);
         [self showToast:@"赞赏页跳转失败，请稍后重试"];
         if (fallback) fallback();
     });
+}
+
++ (void)setRewardScanInProgress:(BOOL)inProgress {
+    @synchronized (self) {
+        sYZRewardScanInProgress = inProgress;
+    }
+}
+
++ (BOOL)isRewardScanInProgress {
+    @synchronized (self) {
+        return sYZRewardScanInProgress;
+    }
 }
 
 + (UIImage *)loadRewardImage {
@@ -241,11 +255,16 @@ extern UIImage *YZEmbeddedDonationImage(void);
         [self invokeSelector:animateHideViews target:imageController arguments:@[@NO]];
     }
 
+    [self setRewardScanInProgress:YES];
+
     id logicParams = [self newLogicParams];
     id scannerParams = [self newScannerParams];
     id logicController = [self newLogicControllerWithViewController:imageController logicParams:logicParams];
     id resultsManager = [self scanResultsManager];
-    if (!logicController) return NO;
+    if (!logicController) {
+        [self setRewardScanInProgress:NO];
+        return NO;
+    }
 
     SEL setScanLogicController = NSSelectorFromString(@"setScanLogicController:");
     if ([resultsManager respondsToSelector:setScanLogicController]) {
@@ -254,7 +273,10 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
     id scanner = [self newScannerWithDelegate:logicController scannerParams:scannerParams];
     SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
-    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) return NO;
+    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) {
+        [self setRewardScanInProgress:NO];
+        return NO;
+    }
 
     NSMutableArray *retained = [self activeScanObjects];
     NSArray *scanObjects = @[
@@ -277,6 +299,7 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [[self activeScanObjects] removeObject:scanObjects];
+        [self setRewardScanInProgress:NO];
     });
 
     return YES;
