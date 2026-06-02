@@ -6,7 +6,6 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
-#import "YZRewardView.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -996,7 +995,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)showRewardSheet {
-    [YZRewardView openRewardPageWithFallback:nil];
+    [self showDonationSheet];
 }
 
 - (void)handleFollowTap {
