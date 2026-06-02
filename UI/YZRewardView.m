@@ -4,8 +4,6 @@
 
 extern UIImage *YZEmbeddedDonationImage(void);
 
-static BOOL sYZRewardScanInProgress = NO;
-
 @implementation YZRewardView
 
 + (NSMutableArray *)activeScanObjects {
@@ -39,18 +37,6 @@ static BOOL sYZRewardScanInProgress = NO;
         [self showToast:@"赞赏页跳转失败，请稍后重试"];
         if (fallback) fallback();
     });
-}
-
-+ (void)setRewardScanInProgress:(BOOL)inProgress {
-    @synchronized (self) {
-        sYZRewardScanInProgress = inProgress;
-    }
-}
-
-+ (BOOL)isRewardScanInProgress {
-    @synchronized (self) {
-        return sYZRewardScanInProgress;
-    }
 }
 
 + (UIImage *)loadRewardImage {
@@ -175,9 +161,22 @@ static BOOL sYZRewardScanInProgress = NO;
 
 + (id)scanResultsManager {
     Class mgrClass = NSClassFromString(@"ScanQRCodeResultsMgr");
+    Class contextClass = NSClassFromString(@"MMContext");
+    SEL activeUserContext = NSSelectorFromString(@"activeUserContext");
+    SEL serviceCenter = NSSelectorFromString(@"serviceCenter");
+    SEL getService = NSSelectorFromString(@"getService:");
+
+    if (mgrClass && [contextClass respondsToSelector:activeUserContext]) {
+        id context = [self invokeSelector:activeUserContext target:contextClass arguments:@[]];
+        id center = [self invokeSelector:serviceCenter target:context arguments:@[]];
+        if ([center respondsToSelector:getService]) {
+            id service = [self invokeSelector:getService target:center arguments:@[mgrClass]];
+            if (service) return service;
+        }
+    }
+
     Class serviceCenterClass = NSClassFromString(@"MMServiceCenter");
     SEL defaultCenter = NSSelectorFromString(@"defaultCenter");
-    SEL getService = NSSelectorFromString(@"getService:");
 
     if (mgrClass && [serviceCenterClass respondsToSelector:defaultCenter]) {
         id center = [self invokeSelector:defaultCenter target:serviceCenterClass arguments:@[]];
@@ -188,6 +187,33 @@ static BOOL sYZRewardScanInProgress = NO;
     }
 
     return nil;
+}
+
++ (UIViewController *)rewardHostViewController {
+    UIWindow *keyWindow = nil;
+    UIApplication *app = UIApplication.sharedApplication;
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in app.connectedScenes) {
+            if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                if (window.isKeyWindow) { keyWindow = window; break; }
+            }
+            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+            if (keyWindow) break;
+        }
+    } else {
+        keyWindow = app.keyWindow;
+    }
+
+    UIViewController *controller = keyWindow.rootViewController;
+    if ([controller isKindOfClass:UITabBarController.class]) {
+        controller = ((UITabBarController *)controller).selectedViewController;
+    }
+    if ([controller isKindOfClass:UINavigationController.class]) {
+        UIViewController *first = ((UINavigationController *)controller).viewControllers.firstObject;
+        if (first) controller = first;
+    }
+    return controller;
 }
 
 + (id)newLogicControllerWithViewController:(UIViewController *)viewController logicParams:(id)logicParams {
@@ -247,24 +273,13 @@ static BOOL sYZRewardScanInProgress = NO;
     if (!image) return NO;
 
     UIImage *scanImage = image;
-    UIViewController *imageController = [self newObjectNamed:@"MsgImgFullScreenViewController"];
-    if (![imageController isKindOfClass:UIViewController.class]) return NO;
-
-    SEL animateHideViews = NSSelectorFromString(@"animateHideViews:");
-    if ([imageController respondsToSelector:animateHideViews]) {
-        [self invokeSelector:animateHideViews target:imageController arguments:@[@NO]];
-    }
-
-    [self setRewardScanInProgress:YES];
+    UIViewController *hostController = [self rewardHostViewController];
 
     id logicParams = [self newLogicParams];
     id scannerParams = [self newScannerParams];
-    id logicController = [self newLogicControllerWithViewController:imageController logicParams:logicParams];
+    id logicController = [self newLogicControllerWithViewController:hostController logicParams:logicParams];
     id resultsManager = [self scanResultsManager];
-    if (!logicController) {
-        [self setRewardScanInProgress:NO];
-        return NO;
-    }
+    if (!logicController) return NO;
 
     SEL setScanLogicController = NSSelectorFromString(@"setScanLogicController:");
     if ([resultsManager respondsToSelector:setScanLogicController]) {
@@ -273,14 +288,11 @@ static BOOL sYZRewardScanInProgress = NO;
 
     id scanner = [self newScannerWithDelegate:logicController scannerParams:scannerParams];
     SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
-    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) {
-        [self setRewardScanInProgress:NO];
-        return NO;
-    }
+    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) return NO;
 
     NSMutableArray *retained = [self activeScanObjects];
     NSArray *scanObjects = @[
-        imageController,
+        hostController ?: (id)kCFNull,
         logicParams ?: (id)kCFNull,
         scannerParams ?: (id)kCFNull,
         logicController,
@@ -292,14 +304,8 @@ static BOOL sYZRewardScanInProgress = NO;
 
     [self invokeSelector:scanOnePicture target:scanner arguments:@[scanImage ?: image]];
 
-    if ([scanner isKindOfClass:UIViewController.class]) {
-        [imageController addChildViewController:(UIViewController *)scanner];
-        [(UIViewController *)scanner didMoveToParentViewController:imageController];
-    }
-
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [[self activeScanObjects] removeObject:scanObjects];
-        [self setRewardScanInProgress:NO];
     });
 
     return YES;

@@ -8,14 +8,11 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
-#import <stddef.h>
-#import <stdint.h>
 
 #import "Core/YZPluginLifecycle.h"
 #import "Core/YZEnvironmentDetector.h"
 #import "Core/YZConfigManager.h"
 #import "UI/YZGlassSheetController.h"
-#import "UI/YZRewardView.h"
 #import "UI/YZAnimator.h"
 #import "WeChat/YZWCRuntime.h"
 #import "WeChat/YZWCServiceCenter.h"
@@ -660,56 +657,6 @@ static void YZXiaoyaozhiInit(void) {
 // MARK: - Logos Hook
 // ============================================================
 
-static Ivar YZFindInstanceVariable(Class cls, const char *name) {
-    for (Class current = cls; current; current = class_getSuperclass(current)) {
-        Ivar ivar = class_getInstanceVariable(current, name);
-        if (ivar) return ivar;
-    }
-    return NULL;
-}
-
-static void YZSetBoolIvarSafely(id object, const char *name, BOOL value) {
-    if (!object || !name) return;
-
-    @try {
-        Ivar ivar = YZFindInstanceVariable([object class], name);
-        if (!ivar) return;
-
-        ptrdiff_t offset = ivar_getOffset(ivar);
-        if (offset < 0) return;
-
-        uint8_t *bytes = (uint8_t *)(__bridge void *)object;
-        bytes[offset] = value ? 1 : 0;
-    } @catch (__unused NSException *exception) {
-        NSLog(@"[小杳知] 设置扫码标记失败: %s", name);
-    }
-}
-
-static void YZClearPointerIvarSafely(id object, const char *name) {
-    if (!object || !name) return;
-
-    @try {
-        Ivar ivar = YZFindInstanceVariable([object class], name);
-        if (!ivar) return;
-
-        ptrdiff_t offset = ivar_getOffset(ivar);
-        if (offset < 0) return;
-
-        uint8_t *bytes = (uint8_t *)(__bridge void *)object;
-        uintptr_t *slot = (uintptr_t *)(bytes + offset);
-        *slot = 0;
-    } @catch (__unused NSException *exception) {
-        NSLog(@"[小杳知] 清理扫码来源失败: %s", name);
-    }
-}
-
-static void YZPrepareRewardQRCodeLogicController(id controller) {
-    if (![YZRewardView isRewardScanInProgress]) return;
-
-    YZSetBoolIvarSafely(controller, "_bIsScanFromAlbumImage", NO);
-    YZClearPointerIvarSafely(controller, "_picFrom");
-}
-
 // Hook 微信的 applicationDidBecomeActive 确保在微信完全启动后再展示
 %hook AppDelegate
 
@@ -720,54 +667,6 @@ static void YZPrepareRewardQRCodeLogicController(id controller) {
 
     YZRegisterWithMaoPluginCollector();
     YZScheduleAlertAfterActivation();
-}
-
-%end
-
-%hook ScanQRCodeLogicParams
-
-- (id)initWithCodeType:(unsigned int)codeType fromScene:(unsigned int)fromScene {
-    if ([YZRewardView isRewardScanInProgress]) {
-        return %orig(codeType, 1);
-    }
-    return %orig;
-}
-
-%end
-
-%hook ScanQRCodeResultInfo
-
-- (BOOL)scanFromAlbum {
-    if ([YZRewardView isRewardScanInProgress]) return NO;
-    return %orig;
-}
-
-- (void)setScanFromAlbum:(BOOL)scanFromAlbum {
-    if ([YZRewardView isRewardScanInProgress]) {
-        %orig(NO);
-        return;
-    }
-    %orig;
-}
-
-%end
-
-%hook ScanQRCodeLogicController
-
-- (id)initWithViewController:(id)viewController logicParams:(id)logicParams {
-    id controller = %orig;
-    YZPrepareRewardQRCodeLogicController(controller);
-    return controller;
-}
-
-- (void)scanOnePicture:(id)picture {
-    YZPrepareRewardQRCodeLogicController(self);
-    %orig;
-}
-
-- (void)openQRCodeOrWXCodeLandingPage:(id)page isShowMultiCodes:(BOOL)isShowMultiCodes businessScene:(NSInteger)businessScene {
-    YZPrepareRewardQRCodeLogicController(self);
-    %orig;
 }
 
 %end

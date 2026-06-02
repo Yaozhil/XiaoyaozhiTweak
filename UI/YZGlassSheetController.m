@@ -296,6 +296,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 #pragma mark - TableView
 
 static NSDictionary *sEntitlementsCache = nil;
+static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (UIColor *)tableCardColor {
     return [UIColor colorWithRed:0.988 green:0.990 blue:1.0 alpha:1.0];
@@ -310,6 +311,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (NSArray<NSString *> *)orderedEntitlementNames {
+    if (sOrderedEntitlementNamesCache) return sOrderedEntitlementNamesCache;
     if (!sEntitlementsCache) sEntitlementsCache = [YZWCServiceCenter getAllEntitlements];
 
     NSMutableArray<NSString *> *ordered = [NSMutableArray array];
@@ -327,35 +329,14 @@ static NSDictionary *sEntitlementsCache = nil;
         if (![seen containsObject:name]) [ordered addObject:name];
     }
 
-    return ordered;
+    sOrderedEntitlementNamesCache = [ordered copy];
+    return sOrderedEntitlementNamesCache;
 }
 
 - (UIView *)statusDotViewWithEnabled:(BOOL)enabled {
     UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 36, 48)];
     container.backgroundColor = UIColor.clearColor;
     UIColor *green = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
-
-    if (enabled) {
-        UIView *halo = [[UIView alloc] initWithFrame:CGRectMake(1, 14, 20, 20)];
-        halo.layer.cornerRadius = 10;
-        halo.backgroundColor = [green colorWithAlphaComponent:0.18];
-        [container addSubview:halo];
-
-        CAKeyframeAnimation *scale = [CAKeyframeAnimation animationWithKeyPath:@"transform.scale"];
-        scale.values = @[@0.72, @1.28, @0.72];
-        scale.keyTimes = @[@0, @0.56, @1];
-
-        CAKeyframeAnimation *opacity = [CAKeyframeAnimation animationWithKeyPath:@"opacity"];
-        opacity.values = @[@0.05, @0.34, @0.05];
-        opacity.keyTimes = scale.keyTimes;
-
-        CAAnimationGroup *group = [CAAnimationGroup animation];
-        group.animations = @[scale, opacity];
-        group.duration = 1.45;
-        group.repeatCount = HUGE_VALF;
-        group.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-        [halo.layer addAnimation:group forKey:@"yz.pulse"];
-    }
 
     UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(6, 19, 10, 10)];
     dot.layer.cornerRadius = 5;
@@ -678,7 +659,6 @@ static NSDictionary *sEntitlementsCache = nil;
     [UIView performWithoutAnimation:^{
         [self.tableView setContentOffset:topOffset animated:NO];
         [self.tableView reloadData];
-        [self.tableView layoutIfNeeded];
         [self.tableView setContentOffset:topOffset animated:NO];
     }];
 }
@@ -686,6 +666,7 @@ static NSDictionary *sEntitlementsCache = nil;
 - (void)goToAccountInfo {
     self.currentPage = 1;
     sEntitlementsCache = nil; // 刷新缓存
+    sOrderedEntitlementNamesCache = nil;
     [self updateBackButtonVisibility];
     [self updateInteractivePopGesture];
     self.navTitle.hidden = NO;
@@ -996,11 +977,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)showRewardSheet {
-    __weak typeof(self) weakSelf = self;
-    [YZRewardView openRewardPageWithFallback:^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        [strongSelf showDonationSheet];
-    }];
+    [YZRewardView openRewardPageWithFallback:nil];
 }
 
 - (void)handleFollowTap {

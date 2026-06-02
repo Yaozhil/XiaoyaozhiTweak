@@ -4,14 +4,17 @@
 
 - 之前 `1.2.5` 候选只触发隐藏扫码，缺少 WCRefine 的“非相册来源”修正，容易卡在微信扫码结果处理链路。
 - `UI/YZDonationImageProvider.m` 曾内嵌旧赞赏码，可能导致扫描的不是用户当前赞赏码。
+- `1.2.6` 真机点击“投喂一下”会卡住界面但不闪退；推测原因是按 WCRefine 增加的扫码来源 hook 与当前上下文链路不匹配，且 `ScanQRCodeResultsMgr` 获取方式不符合 WCEhance 的成功路径。
+- 功能菜单上下滑动偶发卡顿，代码层面已发现并处理：权限状态点曾为每个 cell 创建无限动画，切页 reload 曾强制同步 `layoutIfNeeded`，全部权限名称曾在 cell 渲染时重复排序。
 
 ## 风险与待确认
 
-- 新 hook 基于成熟插件静态逆向复刻，仍需真机验证微信版本兼容性。
-- 私有 ivar `_bIsScanFromAlbumImage` 与 `_picFrom` 可能随微信版本变化；当前实现用运行时查找并用赞赏扫描窗口限制影响范围。
+- 1.2.7 改为 WCEhance 风格后仍需真机验证微信版本兼容性。
+- 真实赞赏页链路依赖微信私有扫码类，类名或 selector 随微信版本变化时仍可能失效。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，WSL 未安装可用发行版，未完成编译级验证。
 
 ## 失败尝试
 
 - 本地通用二维码解码库无法解出微信赞赏码内容，说明不能简单拿到 `wxpay://` 或 native URL 绕过微信扫码结果处理。
 - 直接复刻 `scanOnePicture:` 触发不足以稳定进入赞赏页。
+- 按 WCRefine 复刻扫码来源 hook 的 `1.2.6` 仍会卡住界面；当前已改按 WCEhance 的上下文服务中心路径继续验证。
