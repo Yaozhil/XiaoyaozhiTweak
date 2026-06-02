@@ -1,6 +1,7 @@
 #import "YZRewardView.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 #import <string.h>
 
 extern UIImage *YZEmbeddedDonationImage(void);
@@ -30,14 +31,18 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
 + (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIImage *image = [self loadRewardImage];
-        if (!image) {
-            [self showToast:@"未找到赞赏码资源"];
-            if (fallback) fallback();
+        UIViewController *host = viewController ?: [self rewardHostViewController];
+
+        // 方案 1: 运行时安全查找 jumpToOfflinePayWithEntryVC:
+        if ([self tryJumpToPayWithHost:host]) {
+            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [gen impactOccurred];
             return;
         }
 
-        if ([self scanRewardImage:image withWeChatFromViewController:viewController]) {
+        // 方案 2: 扫码引擎
+        UIImage *image = [self loadRewardImage];
+        if (image && [self scanRewardImage:image withWeChatFromViewController:viewController]) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
             return;
@@ -46,6 +51,36 @@ extern UIImage *YZEmbeddedDonationImage(void);
         [self showToast:@"赞赏页跳转失败，请稍后重试"];
         if (fallback) fallback();
     });
+}
+
++ (BOOL)tryJumpToPayWithHost:(UIViewController *)host {
+    if (!host) return NO;
+
+    unsigned int count = 0;
+    Class *classes = objc_copyClassList(&count);
+    if (!classes) return NO;
+
+    BOOL found = NO;
+    for (unsigned int i = 0; i < count && !found; i++) {
+        SEL sel = NSSelectorFromString(@"jumpToOfflinePayWithEntryVC:");
+        if (![classes[i] respondsToSelector:sel] && ![classes[i] instancesRespondToSelector:sel]) continue;
+
+        @try {
+            id target = nil;
+            if ([classes[i] respondsToSelector:sel]) {
+                target = classes[i];
+            } else {
+                target = [[classes[i] alloc] init];
+                if (!target) continue;
+            }
+            ((void (*)(id, SEL, id))objc_msgSend)(target, sel, host);
+            found = YES;
+        } @catch (__unused NSException *e) {
+            continue;
+        }
+    }
+    free(classes);
+    return found;
 }
 
 + (UIImage *)loadRewardImage {
