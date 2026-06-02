@@ -302,18 +302,12 @@ extern UIImage *YZEmbeddedDonationImage(void);
 + (BOOL)scanRewardImage:(UIImage *)image withWeChatFromViewController:(UIViewController *)viewController {
     if (!image) return NO;
 
-    UIImage *scanImage = [self rewardScanImageFromImage:image] ?: image;
     UIViewController *hostController = viewController ?: [self rewardHostViewController];
 
     Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
     if (!scanClass) return NO;
 
-    // 创建扫码参数 (codeType: 27=支付码, fromScene: 2=相册)
-    id logicParams = [self newLogicParams];
-    if (!logicParams) return NO;
-
-    // 使用带参数的初始化
-    id logicController = [self newLogicControllerWithViewController:hostController logicParams:logicParams];
+    id logicController = [[scanClass alloc] init];
     if (!logicController) return NO;
 
     SEL setFromAlbumSel = NSSelectorFromString(@"setIsFromAlbum:");
@@ -326,14 +320,19 @@ extern UIImage *YZEmbeddedDonationImage(void);
         ((void (*)(id, SEL, NSInteger))objc_msgSend)(logicController, setPicFromSel, 1);
     }
 
+    SEL setHostVCSel = NSSelectorFromString(@"setHostViewController:");
+    if ([logicController respondsToSelector:setHostVCSel] && hostController) {
+        ((void (*)(id, SEL, id))objc_msgSend)(logicController, setHostVCSel, hostController);
+    }
+
     SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
     if (![logicController respondsToSelector:scanSel]) return NO;
 
     NSMutableArray *retained = [self activeScanObjects];
-    NSArray *scanObjects = @[hostController ?: (id)kCFNull, logicParams, logicController, scanImage];
+    NSArray *scanObjects = @[logicController, image];
     [retained addObject:scanObjects];
 
-    ((void (*)(id, SEL, id))objc_msgSend)(logicController, scanSel, scanImage);
+    ((void (*)(id, SEL, id))objc_msgSend)(logicController, scanSel, image);
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [[self activeScanObjects] removeObject:scanObjects];
