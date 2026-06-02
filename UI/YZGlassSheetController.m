@@ -233,7 +233,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     if (customIcon) {
         UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
         imageView.image = customIcon;
-        imageView.contentMode = UIViewContentModeScaleAspectFill;
+        imageView.contentMode = UIViewContentModeScaleAspectFit;
         imageView.backgroundColor = UIColor.clearColor;
         imageView.clipsToBounds = YES;
         [icon addSubview:imageView];
@@ -245,7 +245,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     if (followIcon) {
         UIImageView *imageView = [[UIImageView alloc] initWithFrame:icon.bounds];
         imageView.image = followIcon;
-        imageView.contentMode = UIViewContentModeScaleAspectFill;
+        imageView.contentMode = UIViewContentModeScaleAspectFit;
         imageView.clipsToBounds = YES;
         [icon addSubview:imageView];
     } else {
@@ -286,7 +286,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.avatarShell addSubview:self.avatarView];
 
     // 名称
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 17, w, 34)];
+    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 14, w, 34)];
     self.nameLabel.text = @"小杳知";
     self.nameLabel.font = [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
     self.nameLabel.textAlignment = NSTextAlignmentCenter;
@@ -294,7 +294,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.headerView addSubview:self.nameLabel];
 
     // 版本
-    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 54, w, 22)];
+    self.versionLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, shellY + shellSize + 51, w, 22)];
     self.versionLabel.text = [NSString stringWithFormat:@"Version: %@", [YZPluginLifecycle sharedInstance].pluginVersion];
     self.versionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
     self.versionLabel.textAlignment = NSTextAlignmentCenter;

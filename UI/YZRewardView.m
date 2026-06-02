@@ -304,35 +304,29 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
     UIViewController *hostController = viewController ?: [self rewardHostViewController];
 
-    Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
-    if (!scanClass) return NO;
+    id logicParams = [self newLogicParams];
+    if (!logicParams) return NO;
 
-    id logicController = [[scanClass alloc] init];
+    id scannerParams = [self newScannerParams];
+
+    id logicController = [self newLogicControllerWithViewController:hostController logicParams:logicParams];
     if (!logicController) return NO;
 
-    SEL setFromAlbumSel = NSSelectorFromString(@"setIsFromAlbum:");
-    if ([logicController respondsToSelector:setFromAlbumSel]) {
-        ((void (*)(id, SEL, BOOL))objc_msgSend)(logicController, setFromAlbumSel, YES);
+    id resultsManager = [self scanResultsManager];
+    SEL setScanLogicController = NSSelectorFromString(@"setScanLogicController:");
+    if ([resultsManager respondsToSelector:setScanLogicController]) {
+        [self invokeSelector:setScanLogicController target:resultsManager arguments:@[logicController]];
     }
 
-    SEL setPicFromSel = NSSelectorFromString(@"setPicFrom:");
-    if ([logicController respondsToSelector:setPicFromSel]) {
-        ((void (*)(id, SEL, NSInteger))objc_msgSend)(logicController, setPicFromSel, 1);
-    }
-
-    SEL setHostVCSel = NSSelectorFromString(@"setHostViewController:");
-    if ([logicController respondsToSelector:setHostVCSel] && hostController) {
-        ((void (*)(id, SEL, id))objc_msgSend)(logicController, setHostVCSel, hostController);
-    }
-
-    SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
-    if (![logicController respondsToSelector:scanSel]) return NO;
+    id scanner = [self newScannerWithDelegate:logicController scannerParams:scannerParams];
+    SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
+    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) return NO;
 
     NSMutableArray *retained = [self activeScanObjects];
-    NSArray *scanObjects = @[logicController, image];
+    NSArray *scanObjects = @[hostController ?: (id)kCFNull, logicParams, scannerParams ?: (id)kCFNull, logicController, resultsManager ?: (id)kCFNull, scanner, image];
     [retained addObject:scanObjects];
 
-    ((void (*)(id, SEL, id))objc_msgSend)(logicController, scanSel, image);
+    [self invokeSelector:scanOnePicture target:scanner arguments:@[image]];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [[self activeScanObjects] removeObject:scanObjects];
