@@ -6,6 +6,15 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
 @implementation YZRewardView
 
++ (NSMutableArray *)activeScanObjects {
+    static NSMutableArray *objects = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        objects = [NSMutableArray array];
+    });
+    return objects;
+}
+
 + (void)openRewardPage {
     [self openRewardPageWithFallback:nil];
 }
@@ -22,10 +31,11 @@ extern UIImage *YZEmbeddedDonationImage(void);
         if ([self scanRewardImageWithWeChat:image]) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
-        } else {
-            [self showToast:@"赞赏页跳转失败，请稍后重试"];
-            if (fallback) fallback();
+            return;
         }
+
+        [self showToast:@"赞赏页跳转失败，请稍后重试"];
+        if (fallback) fallback();
     });
 }
 
@@ -49,15 +59,26 @@ extern UIImage *YZEmbeddedDonationImage(void);
     return nil;
 }
 
-+ (id)allocInitClassNamed:(NSString *)className {
++ (id)allocClassNamed:(NSString *)className {
     Class cls = NSClassFromString(className);
     if (!cls) return nil;
 
     @try {
-        id object = [[cls alloc] init];
-        return object;
+        return [cls alloc];
     } @catch (NSException *exception) {
-        NSLog(@"[小杳知] 初始化 %@ 失败: %@", className, exception);
+        NSLog(@"[Xiaoyaozhi] alloc %@ failed: %@", className, exception);
+        return nil;
+    }
+}
+
++ (id)newObjectNamed:(NSString *)className {
+    id object = [self allocClassNamed:className];
+    if (!object) return nil;
+
+    @try {
+        return [object init];
+    } @catch (NSException *exception) {
+        NSLog(@"[Xiaoyaozhi] init %@ failed: %@", className, exception);
         return nil;
     }
 }
@@ -85,7 +106,8 @@ extern UIImage *YZEmbeddedDonationImage(void);
         } else if (type && (strcmp(type, @encode(int)) == 0 || strcmp(type, @encode(unsigned int)) == 0)) {
             int intValue = [value intValue];
             [invocation setArgument:&intValue atIndex:i + 2];
-        } else if (type && (strcmp(type, @encode(NSInteger)) == 0 || strcmp(type, @encode(NSUInteger)) == 0 || strcmp(type, @encode(long long)) == 0 || strcmp(type, @encode(unsigned long long)) == 0)) {
+        } else if (type && (strcmp(type, @encode(NSInteger)) == 0 || strcmp(type, @encode(NSUInteger)) == 0 ||
+                            strcmp(type, @encode(long long)) == 0 || strcmp(type, @encode(unsigned long long)) == 0)) {
             NSInteger integerValue = [value integerValue];
             [invocation setArgument:&integerValue atIndex:i + 2];
         } else {
@@ -103,49 +125,47 @@ extern UIImage *YZEmbeddedDonationImage(void);
         [invocation getReturnValue:&result];
         return result;
     } @catch (NSException *exception) {
-        NSLog(@"[小杳知] 调用 %@ 失败: %@", NSStringFromSelector(selector), exception);
+        NSLog(@"[Xiaoyaozhi] call %@ failed: %@", NSStringFromSelector(selector), exception);
         return nil;
     }
 }
 
 + (id)newLogicParams {
-    id params = [self allocInitClassNamed:@"ScanQRCodeLogicParams"];
-    if (!params) return nil;
-
     SEL initWithCodeTypeFromScene = NSSelectorFromString(@"initWithCodeType:fromScene:");
+    id params = [self allocClassNamed:@"ScanQRCodeLogicParams"];
     if ([params respondsToSelector:initWithCodeTypeFromScene]) {
         id result = [self invokeSelector:initWithCodeTypeFromScene target:params arguments:@[@27, @2]];
         if (result) return result;
     }
 
     SEL initWithCodeType = NSSelectorFromString(@"initWithCodeType:");
+    params = [self allocClassNamed:@"ScanQRCodeLogicParams"];
     if ([params respondsToSelector:initWithCodeType]) {
         id result = [self invokeSelector:initWithCodeType target:params arguments:@[@27]];
         if (result) return result;
     }
-    return params;
+
+    return [self newObjectNamed:@"ScanQRCodeLogicParams"];
 }
 
 + (id)newScannerParams {
-    id params = [self allocInitClassNamed:@"NewQRCodeScannerParams"];
-    if (!params) return nil;
-
     SEL initWithCodeType = NSSelectorFromString(@"initWithCodeType:");
+    id params = [self allocClassNamed:@"NewQRCodeScannerParams"];
     if ([params respondsToSelector:initWithCodeType]) {
         id result = [self invokeSelector:initWithCodeType target:params arguments:@[@27]];
         if (result) return result;
     }
-    return params;
+
+    return [self newObjectNamed:@"NewQRCodeScannerParams"];
 }
 
 + (id)scanResultsManager {
     Class mgrClass = NSClassFromString(@"ScanQRCodeResultsMgr");
-    if (!mgrClass) return nil;
-
     Class serviceCenterClass = NSClassFromString(@"MMServiceCenter");
     SEL defaultCenter = NSSelectorFromString(@"defaultCenter");
     SEL getService = NSSelectorFromString(@"getService:");
-    if ([serviceCenterClass respondsToSelector:defaultCenter]) {
+
+    if (mgrClass && [serviceCenterClass respondsToSelector:defaultCenter]) {
         id center = [self invokeSelector:defaultCenter target:serviceCenterClass arguments:@[]];
         if ([center respondsToSelector:getService]) {
             id service = [self invokeSelector:getService target:center arguments:@[mgrClass]];
@@ -153,56 +173,29 @@ extern UIImage *YZEmbeddedDonationImage(void);
         }
     }
 
-    return [self allocInitClassNamed:@"ScanQRCodeResultsMgr"];
+    return nil;
 }
 
 + (id)newLogicControllerWithViewController:(UIViewController *)viewController logicParams:(id)logicParams {
-    id controller = [self allocInitClassNamed:@"ScanQRCodeLogicController"];
-    if (!controller) return nil;
-
     SEL initSelector = NSSelectorFromString(@"initWithViewController:logicParams:");
+    id controller = [self allocClassNamed:@"ScanQRCodeLogicController"];
     if ([controller respondsToSelector:initSelector]) {
         id result = [self invokeSelector:initSelector target:controller arguments:@[viewController ?: (id)kCFNull, logicParams ?: (id)kCFNull]];
         if (result) return result;
     }
-    return controller;
+
+    return [self newObjectNamed:@"ScanQRCodeLogicController"];
 }
 
 + (id)newScannerWithDelegate:(id)delegate scannerParams:(id)scannerParams {
-    id scanner = [self allocInitClassNamed:@"NewQRCodeScanner"];
-    if (!scanner) return nil;
-
     SEL initSelector = NSSelectorFromString(@"initWithDelegate:scannerParams:");
+    id scanner = [self allocClassNamed:@"NewQRCodeScanner"];
     if ([scanner respondsToSelector:initSelector]) {
         id result = [self invokeSelector:initSelector target:scanner arguments:@[delegate ?: (id)kCFNull, scannerParams ?: (id)kCFNull]];
         if (result) return result;
     }
-    return scanner;
-}
 
-+ (UIViewController *)topViewController {
-    UIWindow *keyWindow = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
-            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                if (window.isKeyWindow) { keyWindow = window; break; }
-            }
-            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-            if (keyWindow) break;
-        }
-    } else {
-        id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
-        if ([delegate respondsToSelector:@selector(window)]) {
-            keyWindow = delegate.window;
-        }
-    }
-
-    UIViewController *controller = keyWindow.rootViewController;
-    while (controller.presentedViewController) controller = controller.presentedViewController;
-    while ([controller isKindOfClass:UINavigationController.class]) controller = ((UINavigationController *)controller).topViewController;
-    while ([controller isKindOfClass:UITabBarController.class]) controller = ((UITabBarController *)controller).selectedViewController;
-    return controller;
+    return [self newObjectNamed:@"NewQRCodeScanner"];
 }
 
 + (UIImage *)croppedImage:(UIImage *)image rect:(CGRect)rect {
@@ -230,70 +223,60 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
     CGFloat w = image.size.width;
     CGFloat h = image.size.height;
-    CGFloat side = MIN(w, h) * 0.50;
-    CGRect rect = CGRectMake((w - side) / 2.0, h * 0.13, side, side);
+    CGFloat side = MIN(w, h) * 0.52;
+    CGRect rect = CGRectMake((w - side) / 2.0, h * 0.12, side, side);
     UIImage *cropped = [self croppedImage:image rect:rect];
     return cropped ?: image;
 }
 
-+ (void)cleanupHiddenImageController:(UIViewController *)imageController {
-    if (!imageController.parentViewController) return;
-
-    [imageController willMoveToParentViewController:nil];
-    [imageController.view removeFromSuperview];
-    [imageController removeFromParentViewController];
-}
-
 + (BOOL)scanRewardImageWithWeChat:(UIImage *)image {
     if (!image) return NO;
-    UIImage *scanImage = [self rewardScanImageFromImage:image];
 
-    UIViewController *imageController = [self allocInitClassNamed:@"MsgImgFullScreenViewController"];
-    if (![imageController isKindOfClass:UIViewController.class]) {
-        imageController = [[UIViewController alloc] init];
-    }
+    UIImage *scanImage = image;
+    UIViewController *imageController = [self newObjectNamed:@"MsgImgFullScreenViewController"];
+    if (![imageController isKindOfClass:UIViewController.class]) return NO;
 
-    UIViewController *hostController = [self topViewController];
-    if (hostController) {
-        [hostController addChildViewController:imageController];
-        imageController.view.frame = CGRectMake(-4, -4, 2, 2);
-        imageController.view.alpha = 0.01;
-        imageController.view.userInteractionEnabled = NO;
-        [hostController.view addSubview:imageController.view];
-        [imageController didMoveToParentViewController:hostController];
+    SEL animateHideViews = NSSelectorFromString(@"animateHideViews:");
+    if ([imageController respondsToSelector:animateHideViews]) {
+        [self invokeSelector:animateHideViews target:imageController arguments:@[@NO]];
     }
 
     id logicParams = [self newLogicParams];
     id scannerParams = [self newScannerParams];
     id logicController = [self newLogicControllerWithViewController:imageController logicParams:logicParams];
     id resultsManager = [self scanResultsManager];
+    if (!logicController) return NO;
 
     SEL setScanLogicController = NSSelectorFromString(@"setScanLogicController:");
-    if ([resultsManager respondsToSelector:setScanLogicController] && logicController) {
+    if ([resultsManager respondsToSelector:setScanLogicController]) {
         [self invokeSelector:setScanLogicController target:resultsManager arguments:@[logicController]];
     }
 
-    id scanner = [self newScannerWithDelegate:(resultsManager ?: logicController) scannerParams:scannerParams];
-    if (!scanner) {
-        [self cleanupHiddenImageController:imageController];
-        return NO;
-    }
-
+    id scanner = [self newScannerWithDelegate:logicController scannerParams:scannerParams];
     SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
-    if (![scanner respondsToSelector:scanOnePicture]) {
-        [self cleanupHiddenImageController:imageController];
-        return NO;
-    }
+    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) return NO;
 
-    if ([imageController respondsToSelector:@selector(addChildViewController:)] && [scanner isKindOfClass:UIViewController.class]) {
+    NSMutableArray *retained = [self activeScanObjects];
+    NSArray *scanObjects = @[
+        imageController,
+        logicParams ?: (id)kCFNull,
+        scannerParams ?: (id)kCFNull,
+        logicController,
+        resultsManager ?: (id)kCFNull,
+        scanner,
+        scanImage ?: image,
+    ];
+    [retained addObject:scanObjects];
+
+    [self invokeSelector:scanOnePicture target:scanner arguments:@[scanImage ?: image]];
+
+    if ([scanner isKindOfClass:UIViewController.class]) {
         [imageController addChildViewController:(UIViewController *)scanner];
         [(UIViewController *)scanner didMoveToParentViewController:imageController];
     }
 
-    [self invokeSelector:scanOnePicture target:scanner arguments:@[scanImage ?: image]];
-
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self cleanupHiddenImageController:imageController];
+        [[self activeScanObjects] removeObject:scanObjects];
     });
 
     return YES;
@@ -301,16 +284,16 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
 + (void)showToast:(NSString *)msg {
     if (msg.length == 0) return;
+
     UIWindow *keyWindow = nil;
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
-                for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                    if (window.isKeyWindow) { keyWindow = window; break; }
-                }
-                if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-                break;
+            if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                if (window.isKeyWindow) { keyWindow = window; break; }
             }
+            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+            if (keyWindow) break;
         }
     } else {
         id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
