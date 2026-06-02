@@ -760,6 +760,46 @@ static NSDictionary *sEntitlementsCache = nil;
     [self dismissDonationSheet];
 }
 
+- (void)donationImage:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo {
+    if (error) {
+        [self showToast:@"保存失败，请检查相册权限"];
+    } else {
+        [self showToast:@"已保存赞赏码到相册"];
+    }
+}
+
+- (void)handleDonationImageLongPress:(UILongPressGestureRecognizer *)gesture {
+    if (gesture.state != UIGestureRecognizerStateBegan) return;
+
+    UIImage *image = [self donationImage];
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"赞赏码操作"
+                                                                   message:@"可以重试跳转，或保存后在微信中识别"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"重新跳转赞赏页" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        [YZRewardView openRewardPageWithFallback:nil];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"保存赞赏码到相册" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        if (image) {
+            UIImageWriteToSavedPhotosAlbum(image, self, @selector(donationImage:didFinishSavingWithError:contextInfo:), nil);
+        } else {
+            [self showToast:@"未找到赞赏码资源"];
+        }
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"复制赞赏对象" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        UIPasteboard.generalPasteboard.string = @"杳杳";
+        [self showToast:@"已复制赞赏对象：杳杳"];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+
+    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = gesture.view;
+        popover.sourceRect = gesture.view.bounds;
+        popover.permittedArrowDirections = UIPopoverArrowDirectionAny;
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
 - (void)showDonationSheet {
     if ([self.view viewWithTag:kYZDonationOverlayTag]) return;
 
@@ -816,11 +856,15 @@ static NSDictionary *sEntitlementsCache = nil;
     imageView.backgroundColor = UIColor.whiteColor;
     imageView.layer.cornerRadius = 18;
     imageView.clipsToBounds = YES;
+    imageView.userInteractionEnabled = YES;
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleDonationImageLongPress:)];
+    [imageView addGestureRecognizer:longPress];
     [card addSubview:imageView];
 
-    UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 50, width - 40, 20)];
-    subtitle.text = @"感谢支持小杳知～";
-    subtitle.font = [UIFont systemFontOfSize:14 weight:UIFontWeightRegular];
+    UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 58, width - 40, 38)];
+    subtitle.text = @"感谢支持小杳知～\n长按赞赏码可保存/重试跳转";
+    subtitle.numberOfLines = 2;
+    subtitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
     subtitle.textAlignment = NSTextAlignmentCenter;
     subtitle.textColor = [UIColor colorWithWhite:0.48 alpha:1.0];
     [card addSubview:subtitle];
@@ -979,7 +1023,7 @@ static NSDictionary *sEntitlementsCache = nil;
             [self showToast:@"已关注 杳知爱吃米饭"];
         } else {
             UIPasteboard.generalPasteboard.string = kGHUserName;
-            [self showToast:@"请手动搜索关注 gh_5a0621af5c7d"];
+            [self showToast:@"请手动搜索关注 杳知爱吃米饭"];
         }
     }]];
     [self presentViewController:alert animated:YES completion:nil];
