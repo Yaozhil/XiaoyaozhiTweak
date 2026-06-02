@@ -21,6 +21,7 @@
 - 已将左下角图标处理成透明 PNG，并同步外部资源与内嵌图。
 - 已将版本号同步到 `1.2.7`。
 - 已检查本机、PortableGit bash 与 WSL 状态：当前没有可用 Theos 构建环境。
+- 已根据 Actions 日志修复 Xcode 16.4 将 `UIApplication.keyWindow` 弃用警告作为错误导致的构建失败。
 
 ## 下一步
 
@@ -31,6 +32,7 @@
 ## 验证方式
 
 - 已运行 `git diff --check`，无空白错误。
+- 已确认 `UI/YZRewardView.m` 不再直接调用 `UIApplication.keyWindow` 或 `UIApplication.windows`。
 - 已验证赞赏码外部资源和内嵌资源 SHA256 均为 `B16087FC1311BD129A61AC511F8FC4030EDF124AC6B1DA00091173AF6977FD22`。
 - 已验证左下角图标外部资源和内嵌资源 SHA256 均为 `D2CB4ED679ACE616379939165A605F0FD65D3EAC6795C39A46845011102DA2D2`。
 - 已确认本机 Windows/PortableGit bash 没有 `make`、`clang`、`dpkg-deb`、`THEOS`，无法直接完成 Theos 构建验证。

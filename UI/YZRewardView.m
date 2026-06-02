@@ -192,17 +192,23 @@ extern UIImage *YZEmbeddedDonationImage(void);
 + (UIViewController *)rewardHostViewController {
     UIWindow *keyWindow = nil;
     UIApplication *app = UIApplication.sharedApplication;
+
     if (@available(iOS 13.0, *)) {
         for (UIScene *scene in app.connectedScenes) {
             if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
             for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                if (window.isKeyWindow) { keyWindow = window; break; }
+                if (window.isKeyWindow) {
+                    keyWindow = window;
+                    break;
+                }
             }
             if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
             if (keyWindow) break;
         }
-    } else {
-        keyWindow = app.keyWindow;
+    }
+    if (!keyWindow) {
+        id<UIApplicationDelegate> delegate = app.delegate;
+        if ([delegate respondsToSelector:@selector(window)]) keyWindow = delegate.window;
     }
 
     UIViewController *controller = keyWindow.rootViewController;
@@ -319,16 +325,18 @@ extern UIImage *YZEmbeddedDonationImage(void);
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
             for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                if (window.isKeyWindow) { keyWindow = window; break; }
+                if (window.isKeyWindow) {
+                    keyWindow = window;
+                    break;
+                }
             }
             if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
             if (keyWindow) break;
         }
-    } else {
+    }
+    if (!keyWindow) {
         id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
-        if ([delegate respondsToSelector:@selector(window)]) {
-            keyWindow = delegate.window;
-        }
+        if ([delegate respondsToSelector:@selector(window)]) keyWindow = delegate.window;
     }
     if (!keyWindow) return;
 
