@@ -197,7 +197,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self.followCard addSubview:self.followIconView];
 
     UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(58, 14, cardW - 172, 20)];
-    label.text = @"关注杳知公众号";
+    label.text = @"小杳知公众号";
     label.font = [UIFont systemFontOfSize:17];
     label.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
     [self.followCard addSubview:label];
