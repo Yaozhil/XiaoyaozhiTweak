@@ -6,7 +6,7 @@
 - `UI/YZDonationImageProvider.m` 曾内嵌旧赞赏码，可能导致扫描的不是用户当前赞赏码。
 - `1.2.6` 真机点击“投喂一下”会卡住界面但不闪退；推测原因是按 WCRefine 增加的扫码来源 hook 与当前上下文链路不匹配，且 `ScanQRCodeResultsMgr` 获取方式不符合 WCEhance 的成功路径。
 - 功能菜单上下滑动偶发卡顿，代码层面已发现并处理：权限状态点曾为每个 cell 创建无限动画，切页 reload 曾强制同步 `layoutIfNeeded`，全部权限名称曾在 cell 渲染时重复排序。
-- Actions 在 Xcode 16.4 / iOS 18.5 SDK 下将 `UIApplication.keyWindow` 弃用警告作为错误处理，导致 `UI/YZRewardView.m` 编译失败；已改为 iOS 13+ 走 `connectedScenes`，旧系统回退到 app delegate 的 `window`。
+- Actions 在 Xcode 16.4 / iOS 18.5 SDK 下将 `UIApplication.keyWindow` 弃用警告作为错误处理，导致 `UI/YZRewardView.m` 编译失败；项目最低系统为 iOS 14，已改为直接走 `connectedScenes`，必要时回退到 app delegate 的 `window`。
 
 ## 风险与待确认
 

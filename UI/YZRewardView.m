@@ -193,18 +193,16 @@ extern UIImage *YZEmbeddedDonationImage(void);
     UIWindow *keyWindow = nil;
     UIApplication *app = UIApplication.sharedApplication;
 
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in app.connectedScenes) {
-            if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
-            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                if (window.isKeyWindow) {
-                    keyWindow = window;
-                    break;
-                }
+    for (UIScene *scene in app.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (window.isKeyWindow) {
+                keyWindow = window;
+                break;
             }
-            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-            if (keyWindow) break;
         }
+        if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+        if (keyWindow) break;
     }
     if (!keyWindow) {
         id<UIApplicationDelegate> delegate = app.delegate;
@@ -321,18 +319,16 @@ extern UIImage *YZEmbeddedDonationImage(void);
     if (msg.length == 0) return;
 
     UIWindow *keyWindow = nil;
-    if (@available(iOS 13.0, *)) {
-        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-            if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
-            for (UIWindow *window in ((UIWindowScene *)scene).windows) {
-                if (window.isKeyWindow) {
-                    keyWindow = window;
-                    break;
-                }
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (window.isKeyWindow) {
+                keyWindow = window;
+                break;
             }
-            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-            if (keyWindow) break;
         }
+        if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+        if (keyWindow) break;
     }
     if (!keyWindow) {
         id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
