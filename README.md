@@ -5,7 +5,7 @@
 ## 版本
 
 - Package: `com.rouneed.xiaoyaozhi`
-- Version: `1.1.9`
+- Version: `1.2.0`
 - Target: `iphoneos-arm64`
 - Minimum iOS: `14.0`
 

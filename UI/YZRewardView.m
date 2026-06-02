@@ -6,6 +6,8 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
 static NSString *sCachedRewardURL = nil;
 
+static NSString *YZStringFromObject(id object, NSSet *visited);
+
 @implementation YZRewardView
 
 + (void)openRewardPage {
@@ -52,6 +54,115 @@ static NSString *sCachedRewardURL = nil;
         }
     }
     NSLog(@"[小杳知] 赞赏码未找到，检查路径: %@", paths);
+    return nil;
+}
+
++ (NSString *)temporaryRewardImagePath {
+    UIImage *image = [self loadRewardImage];
+    if (!image) return nil;
+
+    NSData *data = UIImagePNGRepresentation(image);
+    if (!data) data = UIImageJPEGRepresentation(image, 0.92);
+    if (!data) return nil;
+
+    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"xiaoyaozhi_reward_qr.png"];
+    return [data writeToFile:path atomically:YES] ? path : nil;
+}
+
++ (NSString *)stringByExtractingURLFromObject:(id)object {
+    NSString *text = YZStringFromObject(object, [NSSet set]);
+    if (text.length == 0) return nil;
+
+    NSArray<NSString *> *prefixes = @[@"wxp://", @"weixin://", @"https://", @"http://"];
+    for (NSString *prefix in prefixes) {
+        NSRange start = [text rangeOfString:prefix options:NSCaseInsensitiveSearch];
+        if (start.location == NSNotFound) continue;
+
+        NSUInteger index = start.location;
+        NSUInteger end = index;
+        NSCharacterSet *stop = [NSCharacterSet characterSetWithCharactersInString:@" \n\r\t\"'<>，。；;）)】]"];
+        while (end < text.length) {
+            unichar ch = [text characterAtIndex:end];
+            if ([stop characterIsMember:ch]) break;
+            end++;
+        }
+        if (end > index) {
+            return [text substringWithRange:NSMakeRange(index, end - index)];
+        }
+    }
+    return nil;
+}
+
++ (id)invokeSelector:(SEL)selector onTarget:(id)target withObject:(id)object {
+    if (!target || ![target respondsToSelector:selector]) return nil;
+
+    NSMethodSignature *signature = [target methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments < 3) return nil;
+
+    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+    invocation.target = target;
+    invocation.selector = selector;
+    id argument = object;
+    [invocation setArgument:&argument atIndex:2];
+
+    @try {
+        [invocation invoke];
+        const char *returnType = signature.methodReturnType;
+        if (!returnType || returnType[0] == 'v') return nil;
+        __unsafe_unretained id result = nil;
+        [invocation getReturnValue:&result];
+        return result;
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] 微信扫码解析调用失败 %@: %@", NSStringFromSelector(selector), exception);
+        return nil;
+    }
+}
+
++ (NSString *)decodeRewardQRCodeWithWeChatParser {
+    NSString *path = [self temporaryRewardImagePath];
+    if (path.length == 0) return nil;
+
+    NSArray<NSString *> *classNames = @[
+        @"ScanQRCodeLogicController",
+        @"ScanQRCodeResultsMgr",
+        @"NewQRCodeScanner",
+        @"NewQRCodeScannerParams"
+    ];
+    NSArray<NSString *> *selectorNames = @[
+        @"GetMessageFromImage:",
+        @"getMessageFromImage:",
+        @"scanImage:",
+        @"scanQRCodeImage:",
+        @"scanQRCodeImageAtPath:"
+    ];
+
+    UIImage *image = [UIImage imageWithContentsOfFile:path];
+    NSArray *arguments = image ? @[path, image] : @[path];
+
+    for (NSString *className in classNames) {
+        Class cls = NSClassFromString(className);
+        if (!cls) continue;
+
+        NSMutableArray *targets = [NSMutableArray arrayWithObject:cls];
+        @try {
+            id instance = [[cls alloc] init];
+            if (instance) [targets addObject:instance];
+        } @catch (__unused NSException *exception) {}
+
+        for (id target in targets) {
+            for (NSString *selectorName in selectorNames) {
+                SEL selector = NSSelectorFromString(selectorName);
+                for (id argument in arguments) {
+                    id result = [self invokeSelector:selector onTarget:target withObject:argument];
+                    NSString *url = [self stringByExtractingURLFromObject:result];
+                    if (url.length > 0) {
+                        NSLog(@"[小杳知] 微信内部扫码解析成功: %@", url);
+                        return url;
+                    }
+                }
+            }
+        }
+    }
     return nil;
 }
 
@@ -115,6 +226,9 @@ static NSString *sCachedRewardURL = nil;
 }
 
 + (NSString *)decodeRewardQRCode {
+    NSString *wechatURL = [self decodeRewardQRCodeWithWeChatParser];
+    if (wechatURL.length > 0) return wechatURL;
+
     UIImage *image = [self loadRewardImage];
     for (UIImage *candidate in [self rewardDecodeCandidatesFromImage:image]) {
         NSString *url = [self decodeQRCodeFromImage:candidate];
@@ -223,3 +337,51 @@ static NSString *sCachedRewardURL = nil;
 }
 
 @end
+
+static NSString *YZStringFromObject(id object, NSSet *visited) {
+    if (!object || object == (id)kCFNull) return nil;
+    if ([object isKindOfClass:NSString.class]) return object;
+    if ([object isKindOfClass:NSURL.class]) return [(NSURL *)object absoluteString];
+    if ([object isKindOfClass:NSData.class]) {
+        NSString *string = [[NSString alloc] initWithData:object encoding:NSUTF8StringEncoding];
+        return string;
+    }
+
+    NSValue *pointer = [NSValue valueWithNonretainedObject:object];
+    if ([visited containsObject:pointer]) return nil;
+    NSMutableSet *nextVisited = [visited mutableCopy] ?: [NSMutableSet set];
+    [nextVisited addObject:pointer];
+
+    if ([object isKindOfClass:NSDictionary.class]) {
+        NSMutableArray *parts = [NSMutableArray array];
+        [(NSDictionary *)object enumerateKeysAndObjectsUsingBlock:^(id key, id value, __unused BOOL *stop) {
+            NSString *keyString = YZStringFromObject(key, nextVisited);
+            NSString *valueString = YZStringFromObject(value, nextVisited);
+            if (keyString) [parts addObject:keyString];
+            if (valueString) [parts addObject:valueString];
+        }];
+        return [parts componentsJoinedByString:@" "];
+    }
+
+    if ([object isKindOfClass:NSArray.class] || [object isKindOfClass:NSSet.class]) {
+        NSMutableArray *parts = [NSMutableArray array];
+        for (id value in object) {
+            NSString *valueString = YZStringFromObject(value, nextVisited);
+            if (valueString) [parts addObject:valueString];
+        }
+        return [parts componentsJoinedByString:@" "];
+    }
+
+    for (NSString *key in @[@"nativeUrl", @"m_c2cNativeUrl", @"url", @"m_nsUrl", @"m_nsContent", @"messageString"]) {
+        @try {
+            id value = [object valueForKey:key];
+            NSString *valueString = YZStringFromObject(value, nextVisited);
+            if (valueString.length > 0) return valueString;
+        } @catch (__unused NSException *exception) {}
+    }
+
+    if ([object respondsToSelector:@selector(description)]) {
+        return [object description];
+    }
+    return nil;
+}
