@@ -6,7 +6,6 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
-#import "YZRewardView.h"
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -773,11 +772,8 @@ static NSDictionary *sEntitlementsCache = nil;
 
     UIImage *image = [self donationImage];
     UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"赞赏码操作"
-                                                                   message:@"可以重试跳转，或保存后在微信中识别"
+                                                                   message:@"可以保存后在微信中识别，或复制赞赏对象"
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"重新跳转赞赏页" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        [YZRewardView openRewardPageWithFallback:nil];
-    }]];
     [sheet addAction:[UIAlertAction actionWithTitle:@"保存赞赏码到相册" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
         if (image) {
             UIImageWriteToSavedPhotosAlbum(image, self, @selector(donationImage:didFinishSavingWithError:contextInfo:), nil);
@@ -862,7 +858,7 @@ static NSDictionary *sEntitlementsCache = nil;
     [card addSubview:imageView];
 
     UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 58, width - 40, 38)];
-    subtitle.text = @"感谢支持小杳知～\n长按赞赏码可保存/重试跳转";
+    subtitle.text = @"感谢支持小杳知～\n长按赞赏码可保存/复制对象";
     subtitle.numberOfLines = 2;
     subtitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
     subtitle.textAlignment = NSTextAlignmentCenter;
@@ -999,11 +995,7 @@ static NSDictionary *sEntitlementsCache = nil;
 }
 
 - (void)showRewardSheet {
-    [self showToast:@"正在打开赞赏页..."];
-    __weak typeof(self) weakSelf = self;
-    [YZRewardView openRewardPageWithFallback:^{
-        [weakSelf showDonationSheet];
-    }];
+    [self showDonationSheet];
 }
 
 - (void)handleFollowTap {
