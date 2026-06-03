@@ -40,7 +40,15 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (BOOL)openPaymentWithHost:(UIViewController *)host {
-    // 直接创建微信转账付款页并 present
+    // 先获取联系人
+    id contactMgr = [self getContactManager];
+    id contact = nil;
+    if (contactMgr && [contactMgr respondsToSelector:@selector(getContactByName:)]) {
+        contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"YaoJuiu");
+        if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"杳杳");
+    }
+
+    // 尝试创建微信转账付款页
     NSArray *transferVCs = @[
         @"WCPayTransferMoneyViewController",
         @"WCTransferMoneyViewController",
@@ -55,17 +63,32 @@ extern UIImage *YZEmbeddedDonationImage(void);
         if (!vc) continue;
         if (![vc isKindOfClass:UIViewController.class]) continue;
 
-        // 尝试设置收款方
-        SEL setUsrName = NSSelectorFromString(@"setM_nsUsrName:");
-        if ([vc respondsToSelector:setUsrName]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(vc, setUsrName, @"YaoJuiu");
-        }
-        SEL setContact = NSSelectorFromString(@"setContact:");
-        if ([vc respondsToSelector:setContact]) {
-            id contactMgr = [self getContactManager];
-            if (contactMgr && [contactMgr respondsToSelector:@selector(getContactByName:)]) {
-                id ct = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"YaoJuiu");
-                if (ct) ((void (*)(id, SEL, id))objc_msgSend)(vc, setContact, ct);
+        // 尝试所有可能的属性名设置收款方
+        if (contact) {
+            NSArray *setters = @[@"setM_contact:", @"setContact:", @"setReceiver:",
+                                  @"setM_oContact:", @"setToContact:", @"setToUser:"];
+            for (NSString *sn in setters) {
+                SEL s = NSSelectorFromString(sn);
+                if ([vc respondsToSelector:s]) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(vc, s, contact);
+                    break;
+                }
+            }
+            // 也尝试设置 username 属性
+            SEL getUsrName = NSSelectorFromString(@"m_nsUsrName");
+            if ([contact respondsToSelector:getUsrName]) {
+                NSString *un = ((NSString *(*)(id, SEL))objc_msgSend)(contact, getUsrName);
+                if (un.length) {
+                    NSArray *nameSetters = @[@"setM_nsUsrName:", @"setM_nsToUsrName:",
+                                              @"setReceiverUsername:", @"setToUserName:"];
+                    for (NSString *sn in nameSetters) {
+                        SEL s = NSSelectorFromString(sn);
+                        if ([vc respondsToSelector:s]) {
+                            ((void (*)(id, SEL, id))objc_msgSend)(vc, s, un);
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -75,18 +98,6 @@ extern UIImage *YZEmbeddedDonationImage(void);
             [host presentViewController:vc animated:YES completion:nil];
         }
         return YES;
-    }
-
-    // 备选: 尝试类方法跳转
-    NSArray *payClasses = @[@"WCPayLogicMgr", @"WCPayTransferMoneyLogic"];
-    for (NSString *cn in payClasses) {
-        Class cls = NSClassFromString(cn);
-        if (!cls) continue;
-        SEL sel = NSSelectorFromString(@"jumpToOfflinePayWithEntryVC:");
-        if ([cls respondsToSelector:sel]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(cls, sel, host);
-            return YES;
-        }
     }
 
     [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"weixin://dl/pay"] options:@{} completionHandler:nil];
