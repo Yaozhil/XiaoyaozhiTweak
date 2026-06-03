@@ -59,11 +59,7 @@ extern UIImage *YZEmbeddedDonationImage(void);
     UIApplication *app = [UIApplication sharedApplication];
     NSURL *url = [NSURL URLWithString:@"weixin://dl/pay"];
     if (url) {
-        if ([app respondsToSelector:@selector(openURL:options:completionHandler:)]) {
-            [app openURL:url options:@{} completionHandler:nil];
-        } else {
-            [app openURL:url];
-        }
+        [app openURL:url options:@{} completionHandler:nil];
     }
     return YES;
 }
