@@ -680,6 +680,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)goToAllPermissions {
     self.currentPage = 2;
+    sEntitlementsCache = nil;
+    sOrderedEntitlementNamesCache = nil;
     [self updateInteractivePopGesture];
     self.navTitle.text = @"全部权限";
     [self reloadTableAtTop];
