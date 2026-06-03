@@ -323,26 +323,31 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (sOrderedEntitlementNamesCache) return sOrderedEntitlementNamesCache;
     if (!sEntitlementsCache) sEntitlementsCache = [YZWCServiceCenter getAllEntitlements];
 
-    NSMutableArray<NSString *> *ordered = [NSMutableArray array];
-    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+    NSArray<NSString *> *priority = YZPriorityEntitlementNames();
+    NSArray<NSString *> *all = [sEntitlementsCache.allKeys sortedArrayUsingSelector:@selector(compare:)];
 
-    for (NSString *name in YZPriorityEntitlementNames()) {
+    NSMutableArray<NSString *> *enabledPri = [NSMutableArray array];
+    NSMutableArray<NSString *> *enabledOth = [NSMutableArray array];
+    NSMutableArray<NSString *> *disabledPri = [NSMutableArray array];
+    NSMutableArray<NSString *> *disabledOth = [NSMutableArray array];
+
+    for (NSString *name in priority) {
         if (sEntitlementsCache[name]) {
-            [ordered addObject:name];
-            [seen addObject:name];
+            if ([sEntitlementsCache[name] boolValue]) [enabledPri addObject:name];
+            else [disabledPri addObject:name];
         }
     }
-
-    NSArray<NSString *> *remaining = [sEntitlementsCache.allKeys sortedArrayUsingSelector:@selector(compare:)];
-    NSMutableArray<NSString *> *enabled = [NSMutableArray array];
-    NSMutableArray<NSString *> *disabled = [NSMutableArray array];
-    for (NSString *name in remaining) {
-        if ([seen containsObject:name]) continue;
-        if ([sEntitlementsCache[name] boolValue]) [enabled addObject:name];
-        else [disabled addObject:name];
+    for (NSString *name in all) {
+        if ([priority containsObject:name]) continue;
+        if ([sEntitlementsCache[name] boolValue]) [enabledOth addObject:name];
+        else [disabledOth addObject:name];
     }
-    [ordered addObjectsFromArray:enabled];
-    [ordered addObjectsFromArray:disabled];
+
+    NSMutableArray<NSString *> *ordered = [NSMutableArray array];
+    [ordered addObjectsFromArray:enabledPri];
+    [ordered addObjectsFromArray:enabledOth];
+    [ordered addObjectsFromArray:disabledPri];
+    [ordered addObjectsFromArray:disabledOth];
 
     sOrderedEntitlementNamesCache = [ordered copy];
     return sOrderedEntitlementNamesCache;
