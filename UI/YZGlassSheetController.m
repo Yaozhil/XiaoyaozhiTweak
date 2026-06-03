@@ -306,6 +306,8 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 
 static NSDictionary *sEntitlementsCache = nil;
 static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
+static NSArray<NSString *> *sEnabledEntitlementNames = nil;
+static NSArray<NSString *> *sDisabledEntitlementNames = nil;
 
 - (UIColor *)tableCardColor {
     return [UIColor colorWithRed:0.988 green:0.990 blue:1.0 alpha:1.0];
@@ -349,6 +351,10 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [ordered addObjectsFromArray:disabledPri];
     [ordered addObjectsFromArray:disabledOth];
 
+    NSMutableArray *en = [NSMutableArray array]; [en addObjectsFromArray:enabledPri]; [en addObjectsFromArray:enabledOth];
+    NSMutableArray *di = [NSMutableArray array]; [di addObjectsFromArray:disabledPri]; [di addObjectsFromArray:disabledOth];
+    sEnabledEntitlementNames = [en copy];
+    sDisabledEntitlementNames = [di copy];
     sOrderedEntitlementNamesCache = [ordered copy];
     return sOrderedEntitlementNamesCache;
 }
@@ -366,13 +372,16 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
     if (self.currentPage == 0) return 1;
-    if (self.currentPage == 2) return 1; // 全部权限单分组
+    if (self.currentPage == 2) return 2; // 已开启 / 未开启
     return 5; // 用户信息 应用信息 证书信息 权限信息 查看全部
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)sec {
     if (self.currentPage == 0) return 3;
-    if (self.currentPage == 2) return [self orderedEntitlementNames].count; // 全部权限
+    if (self.currentPage == 2) {
+        if (sec == 0) return sEnabledEntitlementNames.count;
+        return sDisabledEntitlementNames.count;
+    }
     switch (sec) {
         case 0: return 2;  // 用户信息（2行）
         case 1: return 5;  // 应用信息
@@ -392,7 +401,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)sec {
     if (self.currentPage == 0) return nil;
-    if (self.currentPage == 2) return @"全部权限";
+    if (self.currentPage == 2) return sec == 0 ? @"已开启" : @"未开启";
     if (sec == 4) return nil;
     return @[@"用户信息", @"应用信息", @"证书信息", @"权限信息"][sec];
 }
@@ -433,7 +442,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
     // ====== 全部权限子页 ======
     if (self.currentPage == 2) {
-        return [self entitlementCell:cell atRow:ip.row];
+        return [self entitlementCell:cell atRow:ip.row section:ip.section];
     }
 
     // ====== 到期信息页 ======
@@ -475,34 +484,41 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     NSInteger days = [YZWCServiceCenter getCertificateRemainingDays];
 
     cell.textLabel.text = @"证书到期";
+    cell.accessoryView = nil;
 
-    // 日期 + 天数徽章
-    NSString *badge;
     if (days == NSIntegerMin) {
         cell.detailTextLabel.text = expDate;
         cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
-        cell.detailTextLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
         return cell;
-    } else if (days < 0) {
-        badge = @"已过期";
-    } else {
-        badge = [NSString stringWithFormat:@"剩余 %ld天", (long)days];
     }
 
-    NSString *detail = [NSString stringWithFormat:@"%@  ·  %@", expDate, badge];
-    NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc] initWithString:detail attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:15 weight:UIFontWeightRegular],
+    NSString *badge;
+    UIColor *badgeColor;
+    if (days < 0) {
+        badge = @"已过期";
+        badgeColor = [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
+    } else if (days <= 7) {
+        badge = [NSString stringWithFormat:@"剩余 %ld天", (long)days];
+        badgeColor = [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
+    } else if (days <= 30) {
+        badge = [NSString stringWithFormat:@"剩余 %ld天", (long)days];
+        badgeColor = [UIColor colorWithRed:1.0 green:0.58 blue:0.0 alpha:1.0];
+    } else {
+        badge = [NSString stringWithFormat:@"剩余 %ld天", (long)days];
+        badgeColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
+    }
+
+    NSString *full = [NSString stringWithFormat:@"%@  ·  %@", expDate, badge];
+    NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] initWithString:full attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:15],
         NSForegroundColorAttributeName: [UIColor colorWithWhite:0.56 alpha:1.0]
     }];
-    NSRange badgeRange = [detail rangeOfString:badge];
-    if (badgeRange.location != NSNotFound) {
-        [attributed addAttributes:@{
-            NSFontAttributeName: [UIFont systemFontOfSize:15 weight:UIFontWeightMedium],
-            NSForegroundColorAttributeName: [self certificateBadgeColorForRemainingDays:days]
-        } range:badgeRange];
+    NSRange r = [full rangeOfString:badge];
+    if (r.location != NSNotFound) {
+        [attr addAttribute:NSForegroundColorAttributeName value:badgeColor range:r];
+        [attr addAttribute:NSFontAttributeName value:[UIFont systemFontOfSize:15 weight:UIFontWeightMedium] range:r];
     }
-    cell.detailTextLabel.attributedText = attributed;
-    cell.detailTextLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightRegular];
+    cell.detailTextLabel.attributedText = attr;
 
     return cell;
 }
@@ -526,14 +542,11 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 // 全部权限子页
-- (UITableViewCell *)entitlementCell:(UITableViewCell *)cell atRow:(NSInteger)row {
-    NSArray *all = [self orderedEntitlementNames];
-    if (row >= all.count) {
-        cell.textLabel.text = @"";
-        return cell;
-    }
-    NSString *name = all[row];
-    BOOL on = [sEntitlementsCache[name] boolValue];
+- (UITableViewCell *)entitlementCell:(UITableViewCell *)cell atRow:(NSInteger)row section:(NSInteger)sec {
+    NSArray *list = (sec == 0) ? sEnabledEntitlementNames : sDisabledEntitlementNames;
+    if (row >= list.count) { cell.textLabel.text = @""; return cell; }
+    NSString *name = list[row];
+    BOOL on = (sec == 0);
 
     cell.textLabel.text = name;
     cell.detailTextLabel.text = @"";
@@ -687,6 +700,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     self.currentPage = 2;
     sEntitlementsCache = nil;
     sOrderedEntitlementNamesCache = nil;
+    sEnabledEntitlementNames = nil;
+    sDisabledEntitlementNames = nil;
     [self updateInteractivePopGesture];
     self.navTitle.text = @"全部权限";
     [self reloadTableAtTop];
