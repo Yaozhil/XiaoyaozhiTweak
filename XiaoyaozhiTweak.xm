@@ -332,6 +332,11 @@ static void YZPresentAlertIfPossible(void) {
             gYZAlertPresentAttempts = 0;
             return;
         }
+        // 微信未登录时不弹窗，等待登录后再试
+        if (![YZWCServiceCenter isLoggedIn]) {
+            YZScheduleAlertAfterDelay(kYZRetryAlertDelaySeconds);
+            return;
+        }
         if (!YZShouldShowAlert() || gYZAlertPresenting) {
             gYZAlertPresentAttempts = 0;
             return;
