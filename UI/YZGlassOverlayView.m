@@ -37,7 +37,7 @@
 
     YZConfigManager *config = [YZConfigManager shared];
     self.glassEffectEnabled = [config boolForKey:@"glass_effect_enabled"];
-    self.vibrancy = [config floatForKey:@"sheet_damping_ratio"] * 0.5;
+    self.vibrancy = 0.3;
     self.refraction = 0.15;
     self.glassTintColor = [UIColor colorWithWhite:1.0 alpha:0.08];
     self.borderWidth = 0.5;

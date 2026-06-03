@@ -528,8 +528,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         sysctlbyname("hw.machine", NULL, &size, NULL, 0);
         if (size == 0) return nil;
 
-        char *machine = malloc(size);
+        char *machine = malloc(size + 1);
         if (!machine) return nil;
+        memset(machine, 0, size + 1);
         sysctlbyname("hw.machine", machine, &size, NULL, 0);
         NSString *identifier = [NSString stringWithUTF8String:machine];
         free(machine);
@@ -603,9 +604,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         if (expRange.location == NSNotFound) return @"无到期信息";
 
         NSRange dateStart = [content rangeOfString:@"<date>" options:0 range:NSMakeRange(expRange.location, 200)];
-        NSRange dateEnd = [content rangeOfString:@"</date>" options:0 range:NSMakeRange(dateStart.location + 6, 50)];
+        if (dateStart.location == NSNotFound) return @"无法解析";
 
-        if (dateStart.location == NSNotFound || dateEnd.location == NSNotFound) return @"无法解析";
+        NSRange dateEnd = [content rangeOfString:@"</date>" options:0 range:NSMakeRange(dateStart.location + 6, 50)];
+        if (dateEnd.location == NSNotFound) return @"无法解析";
 
         NSString *dateStr = [content substringWithRange:NSMakeRange(dateStart.location + 6,
                                                                      dateEnd.location - dateStart.location - 6)];
@@ -638,8 +640,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         if (expRange.location == NSNotFound) return NSIntegerMin;
 
         NSRange dateStart = [content rangeOfString:@"<date>" options:0 range:NSMakeRange(expRange.location, 200)];
+        if (dateStart.location == NSNotFound) return NSIntegerMin;
+
         NSRange dateEnd = [content rangeOfString:@"</date>" options:0 range:NSMakeRange(dateStart.location + 6, 50)];
-        if (dateStart.location == NSNotFound || dateEnd.location == NSNotFound) return NSIntegerMin;
+        if (dateEnd.location == NSNotFound) return NSIntegerMin;
 
         NSString *dateStr = [content substringWithRange:NSMakeRange(dateStart.location + 6,
                                                                      dateEnd.location - dateStart.location - 6)];

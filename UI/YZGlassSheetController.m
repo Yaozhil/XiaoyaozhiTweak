@@ -1052,10 +1052,12 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)dismissAnimated {
+    self.isPresented = NO;
     [self.view removeFromSuperview];
 }
 
 - (void)dismissAnimatedWithCompletion:(void(^)(void))completion {
+    self.isPresented = NO;
     [self.view removeFromSuperview];
     if (completion) completion();
 }
