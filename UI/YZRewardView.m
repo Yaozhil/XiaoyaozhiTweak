@@ -1,7 +1,6 @@
 #import "YZRewardView.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
-#import <objc/runtime.h>
 #import <string.h>
 
 extern UIImage *YZEmbeddedDonationImage(void);
@@ -31,18 +30,14 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
 + (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIViewController *host = viewController ?: [self rewardHostViewController];
-
-        // 方案 1: 运行时安全查找 jumpToOfflinePayWithEntryVC:
-        if ([self tryJumpToPayWithHost:host]) {
-            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-            [gen impactOccurred];
+        UIImage *image = [self loadRewardImage];
+        if (!image) {
+            [self showToast:@"未找到赞赏码资源"];
+            if (fallback) fallback();
             return;
         }
 
-        // 方案 2: 扫码引擎
-        UIImage *image = [self loadRewardImage];
-        if (image && [self scanRewardImage:image withWeChatFromViewController:viewController]) {
+        if ([self scanRewardImage:image withWeChatFromViewController:viewController]) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
             return;
@@ -51,41 +46,6 @@ extern UIImage *YZEmbeddedDonationImage(void);
         [self showToast:@"赞赏页跳转失败，请稍后重试"];
         if (fallback) fallback();
     });
-}
-
-+ (BOOL)tryJumpToPayWithHost:(UIViewController *)host {
-    if (!host) return NO;
-
-    unsigned int count = 0;
-    Class *classes = objc_copyClassList(&count);
-    if (!classes) return NO;
-
-    BOOL found = NO;
-    for (unsigned int i = 0; i < count && !found; i++) {
-        const char *name = class_getName(classes[i]);
-        if (!name) continue;
-        NSString *className = [NSString stringWithUTF8String:name];
-
-        // 仅搜索支付/转账相关类，避免遍历所有类
-        if ([className rangeOfString:@"Pay" options:NSCaseInsensitiveSearch].location == NSNotFound &&
-            [className rangeOfString:@"Transfer" options:NSCaseInsensitiveSearch].location == NSNotFound &&
-            [className rangeOfString:@"Receipt" options:NSCaseInsensitiveSearch].location == NSNotFound) {
-            continue;
-        }
-
-        SEL sel = NSSelectorFromString(@"jumpToOfflinePayWithEntryVC:");
-        @try {
-            // 仅尝试类方法，不 alloc 实例
-            if ([classes[i] respondsToSelector:sel]) {
-                ((void (*)(id, SEL, id))objc_msgSend)(classes[i], sel, host);
-                found = YES;
-            }
-        } @catch (__unused NSException *e) {
-            continue;
-        }
-    }
-    free(classes);
-    return found;
 }
 
 + (UIImage *)loadRewardImage {
