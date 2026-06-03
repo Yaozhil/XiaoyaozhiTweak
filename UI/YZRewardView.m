@@ -34,42 +34,48 @@ extern UIImage *YZEmbeddedDonationImage(void);
         [gen impactOccurred];
 
         UIViewController *host = viewController ?: [self rewardHostViewController];
-        BOOL opened = [self openPaymentWithHost:host];
-        if (!opened && fallback) fallback();
+        if ([self openPaymentWithHost:host]) return;
+        if (fallback) fallback();
     });
 }
 
 + (BOOL)openPaymentWithHost:(UIViewController *)host {
-    // 尝试用 CContactMgr 获取收款方并跳转个人付款页
-    Class svcClass = NSClassFromString(@"MMServiceCenter");
-    if (!svcClass || ![svcClass respondsToSelector:@selector(defaultCenter)]) return NO;
-    id center = ((id (*)(id, SEL))objc_msgSend)(svcClass, @selector(defaultCenter));
-    if (!center || ![center respondsToSelector:@selector(getService:)]) return NO;
-
-    Class mgrClass = NSClassFromString(@"CContactMgr");
-    if (!mgrClass) return NO;
-    id contactMgr = ((id (*)(id, SEL, Class))objc_msgSend)(center, @selector(getService:), mgrClass);
-    if (!contactMgr || ![contactMgr respondsToSelector:@selector(getContactByName:)]) return NO;
-
-    // 搜索收款方
-    id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"YaoJuiu");
-    if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"杳杳");
-    if (!contact) return NO;
-
-    // 若有用户名则拉出联系人信息页（点击头像可发起转账）
-    SEL getUserName = NSSelectorFromString(@"m_nsUsrName");
-    if (![contact respondsToSelector:getUserName]) return NO;
-    NSString *userName = ((NSString *(*)(id, SEL))objc_msgSend)(contact, getUserName);
-    if (!userName.length) return NO;
-
-    // 通过 openURL 打开微信内部转账链接
-    NSString *urlStr = [NSString stringWithFormat:@"weixin://dl/transfer?username=%@", userName];
-    NSURL *url = [NSURL URLWithString:urlStr];
-    if (url && host) {
-        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
-        return YES;
+    // 方式 1: 尝试 WCPayTransferMoneyLogic 的转账方法
+    Class payClass = NSClassFromString(@"WCPayTransferMoneyLogic");
+    if (payClass) {
+        SEL startSel = NSSelectorFromString(@"startTransferMoneyLogic:Data:");
+        if ([payClass respondsToSelector:startSel]) {
+            NSDictionary *data = @{@"m_nsUsrName": @"YaoJuiu"};
+            ((void (*)(id, SEL, id, id))objc_msgSend)(payClass, startSel, host, data);
+            return YES;
+        }
     }
-    return NO;
+
+    // 方式 2: CContactMgr 找联系人 → openURL
+    Class svc = NSClassFromString(@"MMServiceCenter");
+    if (svc && [svc respondsToSelector:@selector(defaultCenter)]) {
+        id center = ((id (*)(id, SEL))objc_msgSend)(svc, @selector(defaultCenter));
+        if (center && [center respondsToSelector:@selector(getService:)]) {
+            Class mgr = NSClassFromString(@"CContactMgr");
+            if (mgr) {
+                id cmgr = ((id (*)(id, SEL, Class))objc_msgSend)(center, @selector(getService:), mgr);
+                if (cmgr && [cmgr respondsToSelector:@selector(getContactByName:)]) {
+                    id ct = ((id (*)(id, SEL, id))objc_msgSend)(cmgr, @selector(getContactByName:), @"YaoJuiu");
+                    if (ct && [ct respondsToSelector:@selector(m_nsUsrName)]) {
+                        NSString *un = ((NSString *(*)(id, SEL))objc_msgSend)(ct, @selector(m_nsUsrName));
+                        if (un.length) {
+                            [UIApplication.sharedApplication openURL:[NSURL URLWithString:[NSString stringWithFormat:@"weixin://dl/transfer?username=%@", un]] options:@{} completionHandler:nil];
+                            return YES;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 方式 3: 直接 openURL weixin 支付
+    [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"weixin://dl/pay"] options:@{} completionHandler:nil];
+    return YES;
 }
 
 + (UIImage *)loadRewardImage {
