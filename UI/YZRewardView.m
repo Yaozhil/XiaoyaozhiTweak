@@ -40,18 +40,25 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (BOOL)openPaymentWithHost:(UIViewController *)host {
-    // 方式 1: 尝试 WCPayTransferMoneyLogic 的转账方法
-    Class payClass = NSClassFromString(@"WCPayTransferMoneyLogic");
-    if (payClass) {
-        SEL startSel = NSSelectorFromString(@"startTransferMoneyLogic:Data:");
-        if ([payClass respondsToSelector:startSel]) {
-            NSDictionary *data = @{@"m_nsUsrName": @"YaoJuiu"};
-            ((void (*)(id, SEL, id, id))objc_msgSend)(payClass, startSel, host, data);
+    // 尝试多个已知微信支付类名
+    NSArray *payClasses = @[@"WCPayLogicMgr", @"WCPayTransferMoneyLogic", @"WCPayJumpRemindLogic"];
+    for (NSString *cn in payClasses) {
+        Class cls = NSClassFromString(cn);
+        if (!cls) continue;
+        // 尝试类方法
+        SEL sel = NSSelectorFromString(@"jumpToOfflinePayWithEntryVC:");
+        if ([cls respondsToSelector:sel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(cls, sel, host);
+            return YES;
+        }
+        sel = NSSelectorFromString(@"startTransferMoneyLogic:Data:");
+        if ([cls respondsToSelector:sel]) {
+            ((void (*)(id, SEL, id, id))objc_msgSend)(cls, sel, host, @{@"m_nsUsrName": @"YaoJuiu"});
             return YES;
         }
     }
 
-    // 方式 2: CContactMgr 找联系人 → openURL
+    // 方式 2: CContactMgr → openURL
     Class svc = NSClassFromString(@"MMServiceCenter");
     if (svc && [svc respondsToSelector:@selector(defaultCenter)]) {
         id center = ((id (*)(id, SEL))objc_msgSend)(svc, @selector(defaultCenter));
@@ -73,7 +80,7 @@ extern UIImage *YZEmbeddedDonationImage(void);
         }
     }
 
-    // 方式 3: 直接 openURL weixin 支付
+    // 方式 3: weixin URL
     [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"weixin://dl/pay"] options:@{} completionHandler:nil];
     return YES;
 }
