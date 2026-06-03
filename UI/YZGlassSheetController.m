@@ -334,9 +334,15 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }
 
     NSArray<NSString *> *remaining = [sEntitlementsCache.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    NSMutableArray<NSString *> *enabled = [NSMutableArray array];
+    NSMutableArray<NSString *> *disabled = [NSMutableArray array];
     for (NSString *name in remaining) {
-        if (![seen containsObject:name]) [ordered addObject:name];
+        if ([seen containsObject:name]) continue;
+        if ([sEntitlementsCache[name] boolValue]) [enabled addObject:name];
+        else [disabled addObject:name];
     }
+    [ordered addObjectsFromArray:enabled];
+    [ordered addObjectsFromArray:disabled];
 
     sOrderedEntitlementNamesCache = [ordered copy];
     return sOrderedEntitlementNamesCache;
