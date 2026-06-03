@@ -29,45 +29,34 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-        [gen impactOccurred];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        UIImage *image = [self loadRewardImage];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [gen impactOccurred];
 
-        UIViewController *host = viewController ?: [self rewardHostViewController];
-        if ([self openPaymentWithHost:host]) return;
-        if (fallback) fallback();
+            if (image && [self scanWithWeChat:image]) return;
+            if (fallback) fallback();
+        });
     });
 }
 
-+ (BOOL)openPaymentWithHost:(UIViewController *)host {
-    // 最安全方案: 只用 CContactMgr 查联系人，不 alloc 任何微信内部类
-    Class svc = NSClassFromString(@"MMServiceCenter");
-    if (!svc || ![svc respondsToSelector:@selector(defaultCenter)]) return NO;
-    id center = ((id (*)(id, SEL))objc_msgSend)(svc, @selector(defaultCenter));
-    if (!center || ![center respondsToSelector:@selector(getService:)]) return NO;
++ (BOOL)scanWithWeChat:(UIImage *)image {
+    Class cls = NSClassFromString(@"ScanQRCodeLogicController");
+    if (!cls) return NO;
+    id ctrl = [[cls alloc] init];
+    if (!ctrl) return NO;
 
-    Class mgr = NSClassFromString(@"CContactMgr");
-    if (!mgr) return NO;
-    id cmgr = ((id (*)(id, SEL, Class))objc_msgSend)(center, @selector(getService:), mgr);
-    if (!cmgr || ![cmgr respondsToSelector:@selector(getContactByName:)]) return NO;
-
-    id contact = ((id (*)(id, SEL, id))objc_msgSend)(cmgr, @selector(getContactByName:), @"YaoJuiu");
-    if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(cmgr, @selector(getContactByName:), @"杳杳");
-    if (!contact) return NO;
-
-    // 尝试通过 CContactMgr 安全地展示联系人（不 alloc 微信 VC）
-    SEL showContact = NSSelectorFromString(@"addContactToContactList:");
-    if ([cmgr respondsToSelector:showContact]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(cmgr, showContact, contact);
-        return YES;
-    }
-    SEL jumpToContact = NSSelectorFromString(@"jumpToContactInfoPage:");
-    if ([cmgr respondsToSelector:jumpToContact]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(cmgr, jumpToContact, contact);
-        return YES;
+    SEL setAlbum = NSSelectorFromString(@"setIsFromAlbum:");
+    if ([ctrl respondsToSelector:setAlbum]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(ctrl, setAlbum, YES);
     }
 
-    return NO;
+    SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
+    if (![ctrl respondsToSelector:scanSel]) return NO;
+
+    ((void (*)(id, SEL, id))objc_msgSend)(ctrl, scanSel, image);
+    return YES;
 }
 
 + (UIImage *)loadRewardImage {

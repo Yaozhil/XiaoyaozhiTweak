@@ -99,7 +99,7 @@ static NSMutableArray<NSDictionary *> *sPrivacyLog = nil;
 
     report[@"plugin_name"] = @"小杳知";
     report[@"plugin_id"] = @"com.rouneed.xiaoyaozhi";
-    report[@"version"] = @"1.0.6";
+    report[@"version"] = @"1.0.7";
     report[@"generated_at"] = @([[NSDate date] timeIntervalSince1970]);
 
     // 隐私承诺

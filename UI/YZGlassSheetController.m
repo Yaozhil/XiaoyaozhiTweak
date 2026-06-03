@@ -417,7 +417,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
-        cell.textLabel.text = @[@"账户信息", @"常用功能", @"投喂一下"][ip.row];
+        cell.textLabel.text = @[@"到期信息", @"常用功能", @"投喂一下"][ip.row];
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
@@ -429,7 +429,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         return [self entitlementCell:cell atRow:ip.row];
     }
 
-    // ====== 账户信息页 ======
+    // ====== 到期信息页 ======
     cell.accessoryView = nil;
     cell.textLabel.font = [UIFont systemFontOfSize:17];
     cell.detailTextLabel.textColor = [UIColor colorWithWhite:0.56 alpha:1.0];
@@ -669,7 +669,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [self updateBackButtonVisibility];
     [self updateInteractivePopGesture];
     self.navTitle.hidden = NO;
-    self.navTitle.text = @"账户信息";
+    self.navTitle.text = @"到期信息";
     self.infoButton.hidden = YES;
     [self reloadTableAtTop];
 }
@@ -685,7 +685,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (self.currentPage == 2) {
         self.currentPage = 1;
         [self updateInteractivePopGesture];
-        self.navTitle.text = @"账户信息";
+        self.navTitle.text = @"到期信息";
         [self reloadTableAtTop];
     } else if (self.currentPage == 1) {
         self.currentPage = 0;
