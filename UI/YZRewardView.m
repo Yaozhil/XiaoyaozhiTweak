@@ -306,34 +306,27 @@ extern UIImage *YZEmbeddedDonationImage(void);
 + (BOOL)scanRewardImage:(UIImage *)image withWeChatFromViewController:(UIViewController *)viewController {
     if (!image) return NO;
 
-    UIViewController *hostController = viewController ?: [self rewardHostViewController];
+    Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
+    if (!scanClass) return NO;
 
-    id logicParams = [self newLogicParams];
-    if (!logicParams) return NO;
+    id ctrl = [[scanClass alloc] init];
+    if (!ctrl) return NO;
 
-    id scannerParams = [self newScannerParams];
-
-    id logicController = [self newLogicControllerWithViewController:hostController logicParams:logicParams];
-    if (!logicController) return NO;
-
-    id resultsManager = [self scanResultsManager];
-    SEL setScanLogicController = NSSelectorFromString(@"setScanLogicController:");
-    if ([resultsManager respondsToSelector:setScanLogicController]) {
-        [self invokeSelector:setScanLogicController target:resultsManager arguments:@[logicController]];
+    SEL setAlbum = NSSelectorFromString(@"setIsFromAlbum:");
+    if ([ctrl respondsToSelector:setAlbum]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(ctrl, setAlbum, YES);
     }
 
-    id scanner = [self newScannerWithDelegate:logicController scannerParams:scannerParams];
-    SEL scanOnePicture = NSSelectorFromString(@"scanOnePicture:");
-    if (!scanner || ![scanner respondsToSelector:scanOnePicture]) return NO;
+    SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
+    if (![ctrl respondsToSelector:scanSel]) return NO;
 
     NSMutableArray *retained = [self activeScanObjects];
-    NSArray *scanObjects = @[hostController ?: (id)kCFNull, logicParams, scannerParams ?: (id)kCFNull, logicController, resultsManager ?: (id)kCFNull, scanner, image];
-    [retained addObject:scanObjects];
+    [retained addObject:@[ctrl, image]];
 
-    [self invokeSelector:scanOnePicture target:scanner arguments:@[image]];
+    ((void (*)(id, SEL, id))objc_msgSend)(ctrl, scanSel, image);
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [[self activeScanObjects] removeObject:scanObjects];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [[self activeScanObjects] removeAllObjects];
     });
 
     return YES;
