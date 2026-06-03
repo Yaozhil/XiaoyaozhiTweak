@@ -109,17 +109,41 @@ static NSString *YZShownKeyForCurrentInstall(void) {
     return [NSString stringWithFormat:@"%@_%@", kYZShownKey, bundlePath];
 }
 
+static NSString *YZFileFingerprintComponent(NSString *path) {
+    if (path.length == 0) return @"empty";
+    @try {
+        NSDictionary *attr = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+        if (!attr) return [NSString stringWithFormat:@"%@:missing", path.lastPathComponent ?: @"file"];
+        return [NSString stringWithFormat:@"%@:%lld:%.0f", path.lastPathComponent ?: @"file",
+                [attr[NSFileSize] longLongValue], [attr[NSFileModificationDate] timeIntervalSince1970]];
+    } @catch (__unused NSException *e) { return @"unavailable"; }
+}
+
+static NSString *YZInstallFingerprintForCurrentBundle(void) {
+    NSString *bundlePath = NSBundle.mainBundle.bundlePath ?: @"";
+    NSArray *paths = @[
+        bundlePath,
+        [bundlePath stringByAppendingPathComponent:@"Info.plist"],
+        [bundlePath stringByAppendingPathComponent:@"embedded.mobileprovision"],
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiTweak.dylib",
+        @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiTweak.dylib",
+    ];
+    NSMutableArray *comps = [NSMutableArray array];
+    for (NSString *p in paths) { [comps addObject:YZFileFingerprintComponent(p)]; }
+    return [comps componentsJoinedByString:@"|"];
+}
+
 static BOOL YZShouldShowAlert(void) {
-    NSString *currentVersion = [YZPluginLifecycle sharedInstance].pluginVersion;
-    id storedVersion = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
-    if (![storedVersion isKindOfClass:NSString.class]) return YES;
-    return ![(NSString *)storedVersion isEqualToString:currentVersion];
+    NSString *fp = YZInstallFingerprintForCurrentBundle();
+    id stored = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
+    if (![stored isKindOfClass:NSString.class]) return YES;
+    return ![(NSString *)stored isEqualToString:fp];
 }
 
 static void YZMarkAlertShown(void) {
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setObject:[YZPluginLifecycle sharedInstance].pluginVersion forKey:YZShownKeyForCurrentInstall()];
-    [defaults synchronize];
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    [d setObject:YZInstallFingerprintForCurrentBundle() forKey:YZShownKeyForCurrentInstall()];
+    [d synchronize];
 }
 
 static UIViewController *YZTopViewControllerFromRoot(UIViewController *rootViewController) {
