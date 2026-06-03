@@ -29,27 +29,9 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback {
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        UIImage *image = [self loadRewardImage];
-        if (!image) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self showToast:@"未找到赞赏码资源"];
-                if (fallback) fallback();
-            });
-            return;
-        }
-
-        BOOL success = [self scanRewardImage:image withWeChatFromViewController:viewController];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-                [gen impactOccurred];
-            } else {
-                [self showToast:@"赞赏页跳转失败，请稍后重试"];
-                if (fallback) fallback();
-            }
-        });
-    });
+    if (fallback) {
+        dispatch_async(dispatch_get_main_queue(), ^{ fallback(); });
+    }
 }
 
 + (UIImage *)loadRewardImage {
