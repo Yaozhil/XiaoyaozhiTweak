@@ -972,9 +972,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)showRewardSheet {
-    [YZRewardView openRewardPageFromViewController:self fallback:^{
-        [self showDonationSheet];
-    }];
+    [YZRewardView openRewardPageFromViewController:self fallback:nil];
 }
 
 - (void)handleFollowTap {
