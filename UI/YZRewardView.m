@@ -317,7 +317,7 @@ extern UIImage *YZEmbeddedDonationImage(void);
         ((void (*)(id, SEL, BOOL))objc_msgSend)(ctrl, setAlbum, YES);
     }
 
-    UIViewController *host = viewController ?: [self rewardHostViewController];
+    UIViewController *host = [self rewardHostViewController];
     SEL setHost = NSSelectorFromString(@"setHostViewController:");
     if ([ctrl respondsToSelector:setHost] && host) {
         ((void (*)(id, SEL, id))objc_msgSend)(ctrl, setHost, host);
