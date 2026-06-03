@@ -206,7 +206,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     self.followDot.layer.cornerRadius = 3;
     [self.followCard addSubview:self.followDot];
 
-    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 70, 14, 50, 20)];
+    self.followStatusLabel = [[UILabel alloc] initWithFrame:CGRectMake(cardW - 74, 14, 50, 20)];
     self.followStatusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     self.followStatusLabel.textAlignment = NSTextAlignmentRight;
     [self.followCard addSubview:self.followStatusLabel];

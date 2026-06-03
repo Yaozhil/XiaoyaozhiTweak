@@ -30,51 +30,46 @@ extern UIImage *YZEmbeddedDonationImage(void);
 
 + (void)openRewardPageFromViewController:(UIViewController *)viewController fallback:(void (^)(void))fallback {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 尝试打开微信收款链接：#付款:杳杳(YaoJuiu)/杳知专属/001
-        BOOL opened = [self openPaymentURL];
-        if (opened) {
-            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-            [gen impactOccurred];
-            return;
-        }
-        if (fallback) fallback();
+        UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+        [gen impactOccurred];
+
+        UIViewController *host = viewController ?: [self rewardHostViewController];
+        BOOL opened = [self openPaymentWithHost:host];
+        if (!opened && fallback) fallback();
     });
 }
 
-+ (BOOL)openPaymentURL {
-    // 尝试通过微信内部 CContactMgr 获取收款人并跳转付款页
-    id contactMgr = [self getContactManager];
-    if (contactMgr) {
-        SEL contactByName = NSSelectorFromString(@"getContactByName:");
-        if ([contactMgr respondsToSelector:contactByName]) {
-            id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, contactByName, @"YaoJuiu");
-            if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, contactByName, @"杳杳");
-            if (contact) {
-                [self showToast:@"已找到收款方"];
-            }
-        }
-    }
++ (BOOL)openPaymentWithHost:(UIViewController *)host {
+    // 尝试用 CContactMgr 获取收款方并跳转个人付款页
+    Class svcClass = NSClassFromString(@"MMServiceCenter");
+    if (!svcClass || ![svcClass respondsToSelector:@selector(defaultCenter)]) return NO;
+    id center = ((id (*)(id, SEL))objc_msgSend)(svcClass, @selector(defaultCenter));
+    if (!center || ![center respondsToSelector:@selector(getService:)]) return NO;
 
-    // URL 降级
-    UIApplication *app = [UIApplication sharedApplication];
-    NSURL *url = [NSURL URLWithString:@"weixin://dl/pay"];
-    if (url) {
-        [app openURL:url options:@{} completionHandler:nil];
-    }
-    return YES;
-}
+    Class mgrClass = NSClassFromString(@"CContactMgr");
+    if (!mgrClass) return NO;
+    id contactMgr = ((id (*)(id, SEL, Class))objc_msgSend)(center, @selector(getService:), mgrClass);
+    if (!contactMgr || ![contactMgr respondsToSelector:@selector(getContactByName:)]) return NO;
 
-+ (id)getContactManager {
-    Class serviceCenterClass = NSClassFromString(@"MMServiceCenter");
-    if (!serviceCenterClass) return nil;
-    SEL defaultCenterSel = NSSelectorFromString(@"defaultCenter");
-    if (![serviceCenterClass respondsToSelector:defaultCenterSel]) return nil;
-    id center = ((id (*)(id, SEL))objc_msgSend)(serviceCenterClass, defaultCenterSel);
-    if (!center) return nil;
-    SEL getServiceSel = NSSelectorFromString(@"getService:");
-    if (![center respondsToSelector:getServiceSel]) return nil;
-    Class contactMgrClass = NSClassFromString(@"CContactMgr");
-    return contactMgrClass ? ((id (*)(id, SEL, Class))objc_msgSend)(center, getServiceSel, contactMgrClass) : nil;
+    // 搜索收款方
+    id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"YaoJuiu");
+    if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"杳杳");
+    if (!contact) return NO;
+
+    // 若有用户名则拉出联系人信息页（点击头像可发起转账）
+    SEL getUserName = NSSelectorFromString(@"m_nsUsrName");
+    if (![contact respondsToSelector:getUserName]) return NO;
+    NSString *userName = ((NSString *(*)(id, SEL))objc_msgSend)(contact, getUserName);
+    if (!userName.length) return NO;
+
+    // 通过 openURL 打开微信内部转账链接
+    NSString *urlStr = [NSString stringWithFormat:@"weixin://dl/transfer?username=%@", userName];
+    NSURL *url = [NSURL URLWithString:urlStr];
+    if (url && host) {
+        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+        return YES;
+    }
+    return NO;
 }
 
 + (UIImage *)loadRewardImage {
