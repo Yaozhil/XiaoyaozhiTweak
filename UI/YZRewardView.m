@@ -40,77 +40,34 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (BOOL)openPaymentWithHost:(UIViewController *)host {
-    // 先获取联系人
-    id contactMgr = [self getContactManager];
-    id contact = nil;
-    if (contactMgr && [contactMgr respondsToSelector:@selector(getContactByName:)]) {
-        contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"YaoJuiu");
-        if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, @selector(getContactByName:), @"杳杳");
+    // 最安全方案: 只用 CContactMgr 查联系人，不 alloc 任何微信内部类
+    Class svc = NSClassFromString(@"MMServiceCenter");
+    if (!svc || ![svc respondsToSelector:@selector(defaultCenter)]) return NO;
+    id center = ((id (*)(id, SEL))objc_msgSend)(svc, @selector(defaultCenter));
+    if (!center || ![center respondsToSelector:@selector(getService:)]) return NO;
+
+    Class mgr = NSClassFromString(@"CContactMgr");
+    if (!mgr) return NO;
+    id cmgr = ((id (*)(id, SEL, Class))objc_msgSend)(center, @selector(getService:), mgr);
+    if (!cmgr || ![cmgr respondsToSelector:@selector(getContactByName:)]) return NO;
+
+    id contact = ((id (*)(id, SEL, id))objc_msgSend)(cmgr, @selector(getContactByName:), @"YaoJuiu");
+    if (!contact) contact = ((id (*)(id, SEL, id))objc_msgSend)(cmgr, @selector(getContactByName:), @"杳杳");
+    if (!contact) return NO;
+
+    // 尝试通过 CContactMgr 安全地展示联系人（不 alloc 微信 VC）
+    SEL showContact = NSSelectorFromString(@"addContactToContactList:");
+    if ([cmgr respondsToSelector:showContact]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(cmgr, showContact, contact);
+        return YES;
     }
-
-    // 尝试创建微信转账付款页
-    NSArray *transferVCs = @[
-        @"WCPayTransferMoneyViewController",
-        @"WCTransferMoneyViewController",
-        @"WCPayTransferViewController",
-        @"WCPayMoneyViewController",
-        @"WCPayFacingReceiverViewController",
-    ];
-    for (NSString *cn in transferVCs) {
-        Class cls = NSClassFromString(cn);
-        if (!cls) continue;
-        id vc = [[cls alloc] init];
-        if (!vc) continue;
-        if (![vc isKindOfClass:UIViewController.class]) continue;
-
-        // 尝试所有可能的属性名设置收款方
-        if (contact) {
-            NSArray *setters = @[@"setM_contact:", @"setContact:", @"setReceiver:",
-                                  @"setM_oContact:", @"setToContact:", @"setToUser:"];
-            for (NSString *sn in setters) {
-                SEL s = NSSelectorFromString(sn);
-                if ([vc respondsToSelector:s]) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(vc, s, contact);
-                    break;
-                }
-            }
-            // 也尝试设置 username 属性
-            SEL getUsrName = NSSelectorFromString(@"m_nsUsrName");
-            if ([contact respondsToSelector:getUsrName]) {
-                NSString *un = ((NSString *(*)(id, SEL))objc_msgSend)(contact, getUsrName);
-                if (un.length) {
-                    NSArray *nameSetters = @[@"setM_nsUsrName:", @"setM_nsToUsrName:",
-                                              @"setReceiverUsername:", @"setToUserName:"];
-                    for (NSString *sn in nameSetters) {
-                        SEL s = NSSelectorFromString(sn);
-                        if ([vc respondsToSelector:s]) {
-                            ((void (*)(id, SEL, id))objc_msgSend)(vc, s, un);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (host.navigationController) {
-            [host.navigationController pushViewController:vc animated:YES];
-        } else {
-            [host presentViewController:vc animated:YES completion:nil];
-        }
+    SEL jumpToContact = NSSelectorFromString(@"jumpToContactInfoPage:");
+    if ([cmgr respondsToSelector:jumpToContact]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(cmgr, jumpToContact, contact);
         return YES;
     }
 
-    [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"weixin://dl/pay"] options:@{} completionHandler:nil];
-    return YES;
-}
-
-+ (id)getContactManager {
-    Class svc = NSClassFromString(@"MMServiceCenter");
-    if (!svc || ![svc respondsToSelector:@selector(defaultCenter)]) return nil;
-    id center = ((id (*)(id, SEL))objc_msgSend)(svc, @selector(defaultCenter));
-    if (!center || ![center respondsToSelector:@selector(getService:)]) return nil;
-    Class mgr = NSClassFromString(@"CContactMgr");
-    return mgr ? ((id (*)(id, SEL, Class))objc_msgSend)(center, @selector(getService:), mgr) : nil;
+    return NO;
 }
 
 + (UIImage *)loadRewardImage {
