@@ -306,19 +306,9 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 
 static NSDictionary *sEntitlementsCache = nil;
 static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
-static NSArray<NSString *> *sEnabledEntitlementNames = nil;
-static NSArray<NSString *> *sDisabledEntitlementNames = nil;
 
 - (UIColor *)tableCardColor {
     return [UIColor colorWithRed:0.988 green:0.990 blue:1.0 alpha:1.0];
-}
-
-- (UIColor *)certificateBadgeColorForRemainingDays:(NSInteger)days {
-    if (days == NSIntegerMin) return [UIColor colorWithWhite:0.56 alpha:1.0];
-    if (days < 0) return [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
-    if (days <= 7) return [UIColor colorWithRed:1.0 green:0.23 blue:0.19 alpha:1.0];
-    if (days <= 30) return [UIColor colorWithRed:1.0 green:0.58 blue:0.0 alpha:1.0];
-    return [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
 }
 
 - (NSArray<NSString *> *)orderedEntitlementNames {
@@ -351,10 +341,6 @@ static NSArray<NSString *> *sDisabledEntitlementNames = nil;
     [ordered addObjectsFromArray:disabledPri];
     [ordered addObjectsFromArray:disabledOth];
 
-    NSMutableArray *en = [NSMutableArray array]; [en addObjectsFromArray:enabledPri]; [en addObjectsFromArray:enabledOth];
-    NSMutableArray *di = [NSMutableArray array]; [di addObjectsFromArray:disabledPri]; [di addObjectsFromArray:disabledOth];
-    sEnabledEntitlementNames = [en copy];
-    sDisabledEntitlementNames = [di copy];
     sOrderedEntitlementNamesCache = [ordered copy];
     return sOrderedEntitlementNamesCache;
 }
@@ -372,16 +358,13 @@ static NSArray<NSString *> *sDisabledEntitlementNames = nil;
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
     if (self.currentPage == 0) return 1;
-    if (self.currentPage == 2) return 2; // 已开启 / 未开启
+    if (self.currentPage == 2) return 1;
     return 5; // 用户信息 应用信息 证书信息 权限信息 查看全部
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)sec {
     if (self.currentPage == 0) return 3;
-    if (self.currentPage == 2) {
-        if (sec == 0) return sEnabledEntitlementNames.count;
-        return sDisabledEntitlementNames.count;
-    }
+    if (self.currentPage == 2) return [self orderedEntitlementNames].count;
     switch (sec) {
         case 0: return 2;  // 用户信息（2行）
         case 1: return 5;  // 应用信息
@@ -401,7 +384,7 @@ static NSArray<NSString *> *sDisabledEntitlementNames = nil;
 }
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)sec {
     if (self.currentPage == 0) return nil;
-    if (self.currentPage == 2) return sec == 0 ? @"已开启" : @"未开启";
+    if (self.currentPage == 2) return @"全部权限";
     if (sec == 4) return nil;
     return @[@"用户信息", @"应用信息", @"证书信息", @"权限信息"][sec];
 }
@@ -543,10 +526,10 @@ static NSArray<NSString *> *sDisabledEntitlementNames = nil;
 
 // 全部权限子页
 - (UITableViewCell *)entitlementCell:(UITableViewCell *)cell atRow:(NSInteger)row section:(NSInteger)sec {
-    NSArray *list = (sec == 0) ? sEnabledEntitlementNames : sDisabledEntitlementNames;
-    if (row >= list.count) { cell.textLabel.text = @""; return cell; }
-    NSString *name = list[row];
-    BOOL on = (sec == 0);
+    NSArray *all = [self orderedEntitlementNames];
+    if (row >= all.count) { cell.textLabel.text = @""; return cell; }
+    NSString *name = all[row];
+    BOOL on = [sEntitlementsCache[name] boolValue];
 
     cell.textLabel.text = name;
     cell.detailTextLabel.text = @"";
@@ -700,8 +683,6 @@ static NSArray<NSString *> *sDisabledEntitlementNames = nil;
     self.currentPage = 2;
     sEntitlementsCache = nil;
     sOrderedEntitlementNamesCache = nil;
-    sEnabledEntitlementNames = nil;
-    sDisabledEntitlementNames = nil;
     [self updateInteractivePopGesture];
     self.navTitle.text = @"全部权限";
     [self reloadTableAtTop];
