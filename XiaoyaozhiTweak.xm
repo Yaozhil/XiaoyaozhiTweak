@@ -109,64 +109,16 @@ static NSString *YZShownKeyForCurrentInstall(void) {
     return [NSString stringWithFormat:@"%@_%@", kYZShownKey, bundlePath];
 }
 
-static NSString *YZFileFingerprintComponent(NSString *path) {
-    if (path.length == 0) return @"empty";
-
-    @try {
-        NSDictionary<NSFileAttributeKey, id> *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
-        if (!attributes) return [NSString stringWithFormat:@"%@:missing", path.lastPathComponent ?: @"file"];
-
-        NSNumber *fileSize = attributes[NSFileSize];
-        NSDate *modificationDate = attributes[NSFileModificationDate];
-        NSTimeInterval modificationTime = modificationDate ? modificationDate.timeIntervalSince1970 : 0;
-
-        return [NSString stringWithFormat:@"%@:%lld:%.0f",
-                                          path.lastPathComponent ?: @"file",
-                                          fileSize.longLongValue,
-                                          modificationTime];
-    } @catch (__unused NSException *exception) {
-        return [NSString stringWithFormat:@"%@:unavailable", path.lastPathComponent ?: @"file"];
-    }
-}
-
-static NSString *YZInstallFingerprintForCurrentBundle(void) {
-    @try {
-        NSBundle *bundle = NSBundle.mainBundle;
-        NSString *bundlePath = bundle.bundlePath ?: @"";
-        NSString *executablePath = bundle.executablePath ?: @"";
-
-        NSMutableArray<NSString *> *components = [NSMutableArray array];
-        [components addObject:bundlePath];
-        [components addObject:YZFileFingerprintComponent(bundlePath)];
-        [components addObject:YZFileFingerprintComponent(executablePath)];
-
-        NSArray<NSString *> *relativePaths = @[
-            @"Info.plist",
-            @"embedded.mobileprovision",
-            @"_CodeSignature/CodeResources"
-        ];
-
-        for (NSString *relativePath in relativePaths) {
-            NSString *fullPath = [bundlePath stringByAppendingPathComponent:relativePath];
-            [components addObject:YZFileFingerprintComponent(fullPath)];
-        }
-
-        return [components componentsJoinedByString:@"|"];
-    } @catch (__unused NSException *exception) {
-        return NSBundle.mainBundle.bundlePath ?: @"fallback";
-    }
-}
-
 static BOOL YZShouldShowAlert(void) {
-    NSString *currentFingerprint = YZInstallFingerprintForCurrentBundle();
-    id storedFingerprint = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
-    if (![storedFingerprint isKindOfClass:NSString.class]) return YES;
-    return ![(NSString *)storedFingerprint isEqualToString:currentFingerprint];
+    NSString *currentVersion = [YZPluginLifecycle sharedInstance].pluginVersion;
+    id storedVersion = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
+    if (![storedVersion isKindOfClass:NSString.class]) return YES;
+    return ![(NSString *)storedVersion isEqualToString:currentVersion];
 }
 
 static void YZMarkAlertShown(void) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setObject:YZInstallFingerprintForCurrentBundle() forKey:YZShownKeyForCurrentInstall()];
+    [defaults setObject:[YZPluginLifecycle sharedInstance].pluginVersion forKey:YZShownKeyForCurrentInstall()];
     [defaults synchronize];
 }
 
