@@ -342,25 +342,15 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     return sOrderedEntitlementNamesCache;
 }
 
-- (UIView *)_lazyDot {
-    static UIView *container = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 36, 48)];
-        container.backgroundColor = UIColor.clearColor;
-        UIView *dot = [[UIView alloc] initWithFrame:CGRectMake(6, 19, 10, 10)];
-        dot.layer.cornerRadius = 5;
-        dot.tag = 199;
-        [container addSubview:dot];
-    });
-    return container;
-}
 - (UIView *)statusDotViewWithEnabled:(BOOL)enabled {
-    UIView *container = [self _lazyDot];
-    UIView *dot = [container viewWithTag:199];
-    dot.backgroundColor = enabled ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0]
-                                  : [UIColor colorWithWhite:0.82 alpha:1.0];
-    return container;
+    UIView *c = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 36, 48)];
+    c.backgroundColor = UIColor.clearColor;
+    UIView *d = [[UIView alloc] initWithFrame:CGRectMake(6, 19, 10, 10)];
+    d.layer.cornerRadius = 5;
+    d.backgroundColor = enabled ? [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0]
+                                 : [UIColor colorWithWhite:0.82 alpha:1.0];
+    [c addSubview:d];
+    return c;
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
@@ -543,21 +533,17 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 #pragma mark - Arrow / Selection
 
 - (UIView *)arrowView {
-    static UIView *arrow = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        arrow = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 32, 48)];
-        arrow.backgroundColor = UIColor.clearColor;
-        arrow.userInteractionEnabled = NO;
-        UIColor *muted = [UIColor colorWithWhite:0.72 alpha:1.0];
-        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
-        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake(10, 14, 12, 20)];
-        iv.contentMode = UIViewContentModeScaleAspectFit;
-        iv.tintColor = muted;
-        iv.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:cfg];
-        [arrow addSubview:iv];
-    });
-    return arrow;
+    UIView *c = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 32, 48)];
+    c.backgroundColor = UIColor.clearColor;
+    c.userInteractionEnabled = NO;
+    UIColor *muted = [UIColor colorWithWhite:0.72 alpha:1.0];
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
+    UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake(10, 14, 12, 20)];
+    iv.contentMode = UIViewContentModeScaleAspectFit;
+    iv.tintColor = muted;
+    iv.image = [UIImage systemImageNamed:@"chevron.right" withConfiguration:cfg];
+    [c addSubview:iv];
+    return c;
 }
 
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)ip {
