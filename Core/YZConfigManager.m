@@ -33,7 +33,7 @@ static NSDictionary *sDefaultConfig = nil;
             @"max_cache_entries": @50,
             @"max_clarification_rounds": @3,
             @"welcome_message_shown": @NO,
-            @"version": @"1.3.3"
+            @"version": @"1.3.4"
         };
 
         // 用已保存的用户配置覆盖默认值
