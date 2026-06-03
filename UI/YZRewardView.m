@@ -306,6 +306,10 @@ extern UIImage *YZEmbeddedDonationImage(void);
 + (BOOL)scanRewardImage:(UIImage *)image withWeChatFromViewController:(UIViewController *)viewController {
     if (!image) return NO;
 
+    UIImage *scanImage = [self rewardScanImageFromImage:image] ?: image;
+    UIViewController *host = [self rewardHostViewController];
+    if (!host) return NO;
+
     Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
     if (!scanClass) return NO;
 
@@ -317,23 +321,31 @@ extern UIImage *YZEmbeddedDonationImage(void);
         ((void (*)(id, SEL, BOOL))objc_msgSend)(ctrl, setAlbum, YES);
     }
 
-    UIViewController *host = [self rewardHostViewController];
+    SEL setPicFrom = NSSelectorFromString(@"setPicFrom:");
+    if ([ctrl respondsToSelector:setPicFrom]) {
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(ctrl, setPicFrom, 1);
+    }
+
     SEL setHost = NSSelectorFromString(@"setHostViewController:");
-    if ([ctrl respondsToSelector:setHost] && host) {
+    if ([ctrl respondsToSelector:setHost]) {
         ((void (*)(id, SEL, id))objc_msgSend)(ctrl, setHost, host);
     }
 
-    SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
-    if (![ctrl respondsToSelector:scanSel]) return NO;
-
-    NSMutableArray *retained = [self activeScanObjects];
-    [retained addObject:@[ctrl, image]];
-
-    ((void (*)(id, SEL, id))objc_msgSend)(ctrl, scanSel, image);
-
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [[self activeScanObjects] removeAllObjects];
-    });
+    // 尝试 present 后再 scan，让控制器有完整的视图层级
+    if ([ctrl isKindOfClass:UIViewController.class]) {
+        [(UIViewController *)ctrl setModalPresentationStyle:UIModalPresentationOverFullScreen];
+        [host presentViewController:(UIViewController *)ctrl animated:NO completion:^{
+            SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
+            if ([ctrl respondsToSelector:scanSel]) {
+                ((void (*)(id, SEL, id))objc_msgSend)(ctrl, scanSel, scanImage);
+            }
+        }];
+    } else {
+        SEL scanSel = NSSelectorFromString(@"scanOnePicture:");
+        if ([ctrl respondsToSelector:scanSel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(ctrl, scanSel, scanImage);
+        }
+    }
 
     return YES;
 }
