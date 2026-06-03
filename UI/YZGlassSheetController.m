@@ -6,7 +6,7 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
-#import "YZRewardView.h"
+
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -555,8 +555,11 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (self.currentPage == 0) {
         if (ip.row == 0) [self goToAccountInfo];
-        else if (ip.row == 2) [self showRewardSheet];
-        else [self showToast:@"暂未开放"];
+        else {
+            UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+            [gen impactOccurred];
+            [self showToast:@"暂未开放"];
+        }
         return;
     }
     // 用户信息行可点击复制
@@ -971,9 +974,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }
 }
 
-- (void)showRewardSheet {
-    [YZRewardView openRewardPageFromViewController:self fallback:nil];
-}
+
 
 - (void)handleFollowTap {
     if (self.isFollowed) {
