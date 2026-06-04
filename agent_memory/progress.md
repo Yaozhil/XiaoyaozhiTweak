@@ -23,6 +23,7 @@
 - 已修复设备标识：补齐 iPhone 17 系列 `iPhone18,*` 映射，未知新 iPhone/iPad/iPod 型号改为显示泛称加硬件标识。
 - 已修正底部关注失败兜底：点击底部胶囊仍先调用 `followBrand:` 自动关注；关注请求失败或延迟复查仍未确认关注时，优先在当前定制包进程内打开微信原生资料页，不再调用 `weixin://dl/businessWebview`、`weixin://contacts/profile` 或自建 WKWebView；若资料页也打不开，则复制公众号名称并提示用户搜索关注。
 - 已参考用户提供的 `微信助手_3.9-5_无根.deb`：其二进制字符串包含 `initWithMainBrandContact:fromScene:`、`CContactMgr`、`getContactByName:`、`isInContactList:` 等线索，当前已将公众号资料页创建逻辑增强为优先尝试 `initWithMainBrandContact:fromScene:`、`initWithContact:fromScene:`、`initWithContact:`，再回退 setter 注入。
+- 已修正原生资料页打开条件：旧逻辑要求同时存在 `contact` 和 `pushNav` 才创建资料页，底部胶囊弹层可能没有 `navigationController` 导致直接复制；当前改为有 `contact` 即创建资料页，若无可 push 导航则用 `UINavigationController` 包装后从当前弹层 present。
 - 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 
 ## 下一步

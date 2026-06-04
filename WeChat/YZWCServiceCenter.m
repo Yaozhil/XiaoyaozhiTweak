@@ -585,7 +585,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             }
         }
 
-        if (contact && pushNav) {
+        if (contact) {
             // 候选资料页类名：通用联系人 → 品牌专用
             NSArray<NSString *> *vcClassNames = @[
                 @"CContactInfoViewController",
@@ -607,11 +607,29 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             if (infoVCClass) {
                 id infoVC = YZCreateBrandProfileController(infoVCClass, contact);
                 if (infoVC) {
-                    [pushNav pushViewController:infoVC animated:YES];
-                    return YES;
+                    if (pushNav) {
+                        [pushNav pushViewController:infoVC animated:YES];
+                        return YES;
+                    }
+
+                    UIViewController *presenter = viewController ?: [self topMostViewController];
+                    if (presenter) {
+                        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:infoVC];
+                        [presenter presentViewController:nav animated:YES completion:nil];
+                        return YES;
+                    }
+
+                    NSLog(@"[小杳知] openBrandProfile 已创建 %@ 但未找到展示容器", NSStringFromClass([infoVC class]));
+                    return NO;
                 }
+                NSLog(@"[小杳知] openBrandProfile 资料页创建失败 class=%@ contact=%@", NSStringFromClass(infoVCClass), NSStringFromClass([contact class]));
             }
+            NSLog(@"[小杳知] openBrandProfile 未命中资料页类");
+        } else {
+            NSLog(@"[小杳知] openBrandProfile 未获取到公众号 contact");
         }
+    } else {
+        NSLog(@"[小杳知] openBrandProfile 未获取到 CContactMgr");
     }
 
     // 网页兜底会显示“请在微信客户端打开链接”，外部 scheme 又会跳到官方微信；失败时交给 UI 复制公众号名称。

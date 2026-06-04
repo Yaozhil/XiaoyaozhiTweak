@@ -6,6 +6,7 @@
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。
 - 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”。当前已移除外部 scheme 和 WKWebView 兜底，原生资料页打不开时复制公众号名称提示搜索。
+- 底部胶囊曾只显示“已复制公众号名称，请搜索关注”，新增判断显示原因可能是 `viewController.navigationController` 和微信根导航均未命中，旧代码因此完全跳过资料页创建；当前已增加无 pushNav 时的 present 兜底。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 
 ## 风险与待确认
