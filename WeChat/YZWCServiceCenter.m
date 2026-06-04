@@ -448,37 +448,6 @@ static BOOL YZTryBrandDirectlyOperateContactLogic(NSString *brandUserName, id co
     return NO;
 }
 
-static id YZCreateSafeContactInfoController(Class infoVCClass, id contact) {
-    if (!infoVCClass || !contact) return nil;
-
-    @try {
-        id vc = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
-        if (vc) {
-            for (NSString *selName in @[@"setM_contact:", @"setContact:", @"setUserInfo:"]) {
-                SEL sel = NSSelectorFromString(selName);
-                if ([vc respondsToSelector:sel]) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(vc, sel, contact);
-                    return vc;
-                }
-            }
-        }
-
-        SEL contactInit = NSSelectorFromString(@"initWithContact:");
-        if ([infoVCClass instancesRespondToSelector:contactInit]) {
-            vc = ((id (*)(id, SEL, id))objc_msgSend)([infoVCClass alloc], contactInit, contact);
-            if (vc) return vc;
-        }
-
-        SEL contactSceneInit = NSSelectorFromString(@"initWithContact:fromScene:");
-        if ([infoVCClass instancesRespondToSelector:contactSceneInit]) {
-            vc = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([infoVCClass alloc], contactSceneInit, contact, 3);
-            if (vc) return vc;
-        }
-    } @catch (__unused NSException *exception) {
-    }
-    return nil;
-}
-
 static UINavigationController *YZWeChatRootNavController(void);
 
 static UINavigationController *YZNavigationControllerFromViewController(UIViewController *viewController) {
