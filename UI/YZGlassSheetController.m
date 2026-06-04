@@ -824,10 +824,10 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)openManualFollowFallback {
+    UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
     if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
         return;
     }
-    UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
     [self showToast:@"已复制公众号名称，请搜索关注"];
 }
 
