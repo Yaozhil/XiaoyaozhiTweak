@@ -17,7 +17,9 @@
 - 参考插件 `com.shtm.xos_1.4.5_iphoneos-arm64e.deb` 为 `data.tar.lzma`，当前 Windows 环境缺少 lzma/xz 工具，暂未能读取内部动态库；`微信助手_3.9-5_无根.deb` 可读取并已提取 selector 线索。
 - `itenfay/WeChat_tweak` 的公众号关注代码年代较早且在当前仓库文件中是注释/历史示例，selector 兼容性仍需真机验证；已只提取最小兼容思路，没有引入网页或外部 scheme。
 - `ways0210/WechatEnhance` 未包含自动关注公众号实现，但其 `NavigationTitleHooks.xm` 有可用的 `ContactInfoViewController` 跳转模式：关闭弹窗后重新获取顶层控制器再 push/present，当前已采用。
-- “小游戏”来源于 `ways0210/WechatEnhance` 的 `GameCheatsHook.xm` 思路，依赖微信 `CMessageMgr`、`CMessageWrap`、`GameController getMD5ByGameContent:` 等私有接口；不同微信版本可能变更游戏消息字段或 MD5 映射，需要真机验证。
+- “小游戏”功能已按用户要求先移除，当前不再作为调试范围。
+- 用户反馈未关注/账号受限时插件仍显示“已关注”，已定位为关注判断过于乐观；当前已移除 contact 存在即已关注的兜底，但仍需真机确认不同微信版本的 `CContactMgr` 状态 selector 是否命中。
+- 用户提供的调试截图显示微信原生 WebView 能打开 mp 页面，但出现“操作频繁，请稍后再试”；这属于服务端频控/账号状态风险，插件只能兜底打开主页，无法保证自动关注或绕过频控。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
 
 ## 失败尝试

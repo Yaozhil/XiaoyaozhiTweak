@@ -10,6 +10,7 @@ static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
+static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124";
 
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
@@ -130,7 +131,7 @@ static BOOL YZContactUserNameMatches(id contact, NSString *brandUserName) {
         id value = YZValueForAnyKey(contact, @[@"m_nsUsrName", @"m_nsUserName", @"userName", @"usrName"]);
         if ([value isKindOfClass:NSString.class]) userName = value;
     }
-    return userName.length == 0 || [userName isEqualToString:brandUserName];
+    return userName.length > 0 && [userName isEqualToString:brandUserName];
 }
 
 static BOOL YZBoolFromSelectors(id target, NSArray<NSString *> *selectorNames, BOOL *found) {
@@ -158,28 +159,45 @@ static BOOL YZBoolFromKeys(id target, NSArray<NSString *> *keys, BOOL *found) {
     return NO;
 }
 
+static BOOL YZBoolFromOneArgSelectors(id target, NSArray<NSString *> *selectorNames, id argument, BOOL *found) {
+    if (found) *found = NO;
+    if (!target || !argument) return NO;
+
+    for (NSString *selectorName in selectorNames) {
+        SEL selector = NSSelectorFromString(selectorName);
+        if (![target respondsToSelector:selector]) continue;
+
+        @try {
+            BOOL value = ((BOOL (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
+            if (found) *found = YES;
+            return value;
+        } @catch (__unused NSException *exception) {
+        }
+    }
+    return NO;
+}
+
 static BOOL YZContactLooksFollowed(id contact, NSString *brandUserName) {
     if (!contact || !YZContactUserNameMatches(contact, brandUserName)) return NO;
 
     BOOL found = NO;
     BOOL followed = YZBoolFromSelectors(contact, @[
-        @"isContact",
         @"isInContactList",
         @"isInContact",
-        @"isFriend",
-        @"isAddedContact"
+        @"isMyContact"
     ], &found);
     if (found) return followed;
 
     followed = YZBoolFromKeys(contact, @[
-        @"m_isContact",
-        @"isContact",
-        @"m_bContact",
-        @"m_bInContactList"
+        @"m_bInContactList",
+        @"m_isInContactList",
+        @"m_isInContact",
+        @"isInContactList",
+        @"isInContact"
     ], &found);
     if (found) return followed;
 
-    return YES;
+    return NO;
 }
 
 static id YZCreateBrandContact(NSString *brandUserName) {
@@ -298,12 +316,21 @@ static id YZCreateBrandProfileController(Class infoVCClass, id contact) {
     return nil;
 }
 
+static UINavigationController *YZWeChatRootNavController(void);
+
 static UINavigationController *YZNavigationControllerFromViewController(UIViewController *viewController) {
     if (!viewController) return nil;
+    NSString *className = NSStringFromClass(viewController.class);
+    if ([className containsString:@"YZGlass"]) return nil;
     if ([viewController isKindOfClass:UINavigationController.class]) {
         return (UINavigationController *)viewController;
     }
     return viewController.navigationController;
+}
+
+static UINavigationController *YZPreferredPushNavigationController(UIViewController *viewController) {
+    UINavigationController *nav = YZNavigationControllerFromViewController(viewController);
+    return nav ?: YZWeChatRootNavController();
 }
 
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
@@ -469,6 +496,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         id contactMgr = [self getContactManager];
         if (!contactMgr) return NO;
 
+        BOOL found = NO;
+        BOOL inContactList = YZBoolFromOneArgSelectors(contactMgr, @[
+            @"isInContactList:",
+            @"isInContact:",
+            @"isMyContact:"
+        ], brandUserName, &found);
+        if (found) return inContactList;
+
         id contact = YZBrandContactFromManager(contactMgr, brandUserName);
         return YZContactLooksFollowed(contact, brandUserName);
     } @catch (NSException *exception) {
@@ -592,10 +627,107 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     return root;
 }
 
++ (BOOL)presentController:(UIViewController *)controller fromViewController:(UIViewController *)viewController {
+    if (!controller) return NO;
+
+    UINavigationController *pushNav = YZPreferredPushNavigationController(viewController);
+    if (pushNav) {
+        [pushNav pushViewController:controller animated:YES];
+        return YES;
+    }
+
+    UIViewController *presenter = viewController ?: [self topMostViewController];
+    if (!presenter) return NO;
+
+    if (presenter.presentingViewController) {
+        [presenter dismissViewControllerAnimated:YES completion:^{
+            UIViewController *topVC = [self topMostViewController];
+            UINavigationController *nav = YZNavigationControllerFromViewController(topVC);
+            if (nav) {
+                [nav pushViewController:controller animated:YES];
+            } else if (topVC) {
+                [topVC presentViewController:controller animated:YES completion:nil];
+            }
+        }];
+        return YES;
+    }
+
+    UINavigationController *nav = YZNavigationControllerFromViewController(presenter);
+    if (nav) {
+        [nav pushViewController:controller animated:YES];
+    } else {
+        [presenter presentViewController:controller animated:YES completion:nil];
+    }
+    return YES;
+}
+
++ (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
+    Class webVCClass = NSClassFromString(@"MMWebViewController");
+    if (!webVCClass) webVCClass = NSClassFromString(@"WCWebViewController");
+    if (!webVCClass) webVCClass = NSClassFromString(@"MMWebViewController_Navigation");
+    if (!webVCClass) return NO;
+
+    id webVC = nil;
+    NSURL *profileURL = [NSURL URLWithString:kYZOfficialAccountProfileURL];
+    NSArray *urlCandidates = profileURL ? @[kYZOfficialAccountProfileURL, profileURL] : @[kYZOfficialAccountProfileURL];
+    @try {
+        SEL init3 = NSSelectorFromString(@"initWithURL:presentModal:extraInfo:");
+        if ([webVCClass instancesRespondToSelector:init3]) {
+            for (id url in urlCandidates) {
+                webVC = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)([webVCClass alloc], init3, url, NO, nil);
+                if (webVC) break;
+            }
+        }
+
+        if (!webVC) {
+            SEL init2 = NSSelectorFromString(@"initWithURL:presentModal:");
+            if ([webVCClass instancesRespondToSelector:init2]) {
+                for (id url in urlCandidates) {
+                    webVC = ((id (*)(id, SEL, id, BOOL))objc_msgSend)([webVCClass alloc], init2, url, NO);
+                    if (webVC) break;
+                }
+            }
+        }
+
+        if (!webVC) {
+            SEL initURL = NSSelectorFromString(@"initWithURL:");
+            if ([webVCClass instancesRespondToSelector:initURL]) {
+                for (id url in urlCandidates) {
+                    webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURL, url);
+                    if (webVC) break;
+                }
+            }
+        }
+
+        if (!webVC) {
+            SEL initURLString = NSSelectorFromString(@"initWithURLString:");
+            if ([webVCClass instancesRespondToSelector:initURLString]) {
+                webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURLString, kYZOfficialAccountProfileURL);
+            }
+        }
+
+        if (!webVC) {
+            webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
+            for (NSString *selectorName in @[@"setURL:", @"setUrl:", @"setM_nsURL:", @"setM_nsUrl:"]) {
+                SEL selector = NSSelectorFromString(selectorName);
+                if ([webVC respondsToSelector:selector]) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(webVC, selector, kYZOfficialAccountProfileURL);
+                    break;
+                }
+            }
+        }
+    } @catch (__unused NSException *exception) {
+        webVC = nil;
+    }
+
+    if (![webVC isKindOfClass:UIViewController.class]) return NO;
+    return [self presentController:(UIViewController *)webVC fromViewController:viewController];
+}
+
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
 
-    UINavigationController *pushNav = viewController.navigationController ?: YZWeChatRootNavController();
+    UINavigationController *pushNav = YZPreferredPushNavigationController(viewController);
 
     // ── 第一优先：微信原生 CContactInfoViewController ──
     id contactMgr = [self getContactManager];
@@ -693,7 +825,11 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         NSLog(@"[小杳知] openBrandProfile 未获取到 CContactMgr");
     }
 
-    // 网页兜底会显示“请在微信客户端打开链接”，外部 scheme 又会跳到官方微信；失败时交给 UI 复制公众号名称。
+    if ([self openBrandWebProfileFromViewController:viewController]) {
+        return YES;
+    }
+
+    // 外部 scheme 会跳到官方微信；自建 WKWebView 会显示“请在微信客户端打开链接”。最终失败时交给 UI 复制公众号名称。
     return NO;
 }
 

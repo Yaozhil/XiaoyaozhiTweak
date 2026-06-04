@@ -26,13 +26,16 @@
 - 已修正原生资料页打开条件：旧逻辑要求同时存在 `contact` 和 `pushNav` 才创建资料页，底部胶囊弹层可能没有 `navigationController` 导致直接复制；当前改为有 `contact` 即创建资料页，若无可 push 导航则用 `UINavigationController` 包装后从当前弹层 present。
 - 已参考开源仓库 `itenfay/WeChat_tweak`：其历史公众号关注示例使用 `getContactForSearchByName:` 获取公众号 contact、`addLocalContact:listType:2` 写入本地、`getContactsFromServer:` 同步，再通过 `ContactInfoViewController` + `setM_contact:` 打开资料页；当前已加入这些 selector 和类名兼容。
 - 已参考开源仓库 `ways0210/WechatEnhance`：其资料页跳转逻辑会先关闭当前弹窗，再重新获取顶层控制器，能拿到导航控制器就 push `ContactInfoViewController`，否则直接 present；当前已按该模式替换底部胶囊无导航时的展示方式。
-- 已开始整合常用功能：新增“常用功能”子页，加入“小游戏”开关；开启后 hook `CMessageMgr -AddEmoticonMsg:MsgWrap:`，在发送微信猜拳/骰子游戏表情时弹出选择框，可选择剪刀/石头/布或骰子点数。
+- 已按用户要求暂停并移除“小游戏”功能：删除小游戏 hook 源码、编译项、常用功能菜单入口和开关逻辑，当前集中处理公众号关注链路。
+- 已修正公众号关注状态误判：`isBrandFollowing:` 优先调用 `CContactMgr isInContactList:`/`isInContact:`/`isMyContact:`；若微信版本没有这些 selector，才读取 contact 的明确列表状态字段；不再因 contact 对象存在或用户名为空而显示“已关注”。
+- 用户补充的大佬插件录屏/截图显示 mp 主页可在微信原生 WebView 内打开，UA 含 `MicroMessenger/8.0.74`，页面报“操作频繁，请稍后再试”更像微信服务端频控；当前已新增 `MMWebViewController`/`WCWebViewController` 内部 WebView 兜底打开公众号主页 URL。
 - 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 
 ## 下一步
 
 - 推送后等待 GitHub Actions 构建结果。
-- 真机验证首次弹窗倒计时、确认按钮、自动关注请求、失败提示，以及底部胶囊失败后是否留在定制包内打开原生资料页；若无法打开，应只复制公众号名称并提示搜索，不再显示“请在微信客户端打开链接”。同时验证“常用功能 -> 小游戏”开关和发送猜拳/骰子时的选择弹窗。
+- 真机验证首次弹窗倒计时、确认按钮、自动关注请求、失败提示，以及底部胶囊失败后是否留在定制包内打开原生资料页；若无法打开，应只复制公众号名称并提示搜索，不再显示“请在微信客户端打开链接”。
+- 当前重点验证：未关注/受限账号在插件底部是否不再误显示“已关注”；点击底部关注后，原生资料页失败时是否进入微信内部 WebView 的公众号主页，而不是外跳官方微信或自建 WKWebView。
 - 用户当前测试微信账号功能受限，关注成功与否需要正常账号客户或解除限制后最终确认。
 
 ## 验证方式
