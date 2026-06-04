@@ -78,7 +78,7 @@ static void YZSetGameResult(id msgWrap, NSInteger content) {
         return;
     }
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"猜丁壳"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"小游戏"
                                                                    message:(gameType == 1 ? @"请选择出拳" : @"请选择骰子点数")
                                                             preferredStyle:UIAlertControllerStyleActionSheet];
 

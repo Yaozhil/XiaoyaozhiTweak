@@ -434,7 +434,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (self.currentPage == 3) {
         cell.accessoryView = nil;
         cell.textLabel.font = [UIFont systemFontOfSize:17];
-        cell.textLabel.text = @"猜丁壳+骰子";
+        cell.textLabel.text = @"小游戏";
         cell.detailTextLabel.text = [NSUserDefaults.standardUserDefaults boolForKey:kYZGameCheatEnabledKey] ? @"已开启" : @"已关闭";
         UISwitch *toggle = [[UISwitch alloc] initWithFrame:CGRectZero];
         toggle.on = [NSUserDefaults.standardUserDefaults boolForKey:kYZGameCheatEnabledKey];
@@ -582,7 +582,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         [NSUserDefaults.standardUserDefaults synchronize];
         UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
         [gen impactOccurred];
-        [self showToast:enabled ? @"猜丁壳+骰子已开启" : @"猜丁壳+骰子已关闭"];
+        [self showToast:enabled ? @"小游戏已开启" : @"小游戏已关闭"];
         [self.tableView reloadRowsAtIndexPaths:@[ip] withRowAnimation:UITableViewRowAnimationNone];
         return;
     }
@@ -723,7 +723,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 - (void)gameCheatSwitchChanged:(UISwitch *)sender {
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:kYZGameCheatEnabledKey];
     [NSUserDefaults.standardUserDefaults synchronize];
-    [self showToast:sender.on ? @"猜丁壳+骰子已开启" : @"猜丁壳+骰子已关闭"];
+    [self showToast:sender.on ? @"小游戏已开启" : @"小游戏已关闭"];
     [self.tableView reloadData];
 }
 

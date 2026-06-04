@@ -26,13 +26,13 @@
 - 已修正原生资料页打开条件：旧逻辑要求同时存在 `contact` 和 `pushNav` 才创建资料页，底部胶囊弹层可能没有 `navigationController` 导致直接复制；当前改为有 `contact` 即创建资料页，若无可 push 导航则用 `UINavigationController` 包装后从当前弹层 present。
 - 已参考开源仓库 `itenfay/WeChat_tweak`：其历史公众号关注示例使用 `getContactForSearchByName:` 获取公众号 contact、`addLocalContact:listType:2` 写入本地、`getContactsFromServer:` 同步，再通过 `ContactInfoViewController` + `setM_contact:` 打开资料页；当前已加入这些 selector 和类名兼容。
 - 已参考开源仓库 `ways0210/WechatEnhance`：其资料页跳转逻辑会先关闭当前弹窗，再重新获取顶层控制器，能拿到导航控制器就 push `ContactInfoViewController`，否则直接 present；当前已按该模式替换底部胶囊无导航时的展示方式。
-- 已开始整合常用功能：新增“常用功能”子页，加入“猜丁壳+骰子”开关；开启后 hook `CMessageMgr -AddEmoticonMsg:MsgWrap:`，在发送微信猜拳/骰子游戏表情时弹出选择框，可选择剪刀/石头/布或骰子点数。
+- 已开始整合常用功能：新增“常用功能”子页，加入“小游戏”开关；开启后 hook `CMessageMgr -AddEmoticonMsg:MsgWrap:`，在发送微信猜拳/骰子游戏表情时弹出选择框，可选择剪刀/石头/布或骰子点数。
 - 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 
 ## 下一步
 
 - 推送后等待 GitHub Actions 构建结果。
-- 真机验证首次弹窗倒计时、确认按钮、自动关注请求、失败提示，以及底部胶囊失败后是否留在定制包内打开原生资料页；若无法打开，应只复制公众号名称并提示搜索，不再显示“请在微信客户端打开链接”。同时验证“常用功能 -> 猜丁壳+骰子”开关和发送猜拳/骰子时的选择弹窗。
+- 真机验证首次弹窗倒计时、确认按钮、自动关注请求、失败提示，以及底部胶囊失败后是否留在定制包内打开原生资料页；若无法打开，应只复制公众号名称并提示搜索，不再显示“请在微信客户端打开链接”。同时验证“常用功能 -> 小游戏”开关和发送猜拳/骰子时的选择弹窗。
 - 用户当前测试微信账号功能受限，关注成功与否需要正常账号客户或解除限制后最终确认。
 
 ## 验证方式
