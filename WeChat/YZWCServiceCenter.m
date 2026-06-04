@@ -275,25 +275,40 @@ static BOOL YZOpenInWeChatWebView(NSString *urlString) {
     }
     if (!webVCClass) return NO;
 
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return NO;
-
     id webVC = nil;
-    // 尝试多种初始化方式
-    SEL initSel = NSSelectorFromString(@"initWithURL:");
-    if ([webVCClass instancesRespondToSelector:initSel]) {
-        webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], initSel, url);
+    // initWithURL: 通常接受 NSString，部分版本接受 NSURL，都试一遍
+    SEL strInitSel = NSSelectorFromString(@"initWithURL:");
+    if ([webVCClass instancesRespondToSelector:strInitSel]) {
+        webVC = ((id (*)(id, SEL, NSString *))objc_msgSend)([webVCClass alloc], strInitSel, urlString);
     }
     if (!webVC) {
-        initSel = NSSelectorFromString(@"initWithUrl:");
-        if ([webVCClass instancesRespondToSelector:initSel]) {
-            webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], initSel, url);
+        // 尝试 NSURL 参数版本
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (url) {
+            SEL urlInitSel = NSSelectorFromString(@"initWithUrl:");
+            if ([webVCClass instancesRespondToSelector:urlInitSel]) {
+                webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], urlInitSel, url);
+            }
         }
     }
     if (!webVC) {
         webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
     }
     if (!webVC) return NO;
+
+    // 如果 init 不带 URL，尝试手动设置
+    if (webVC) {
+        SEL loadSel = NSSelectorFromString(@"loadURLString:");
+        if ([webVC respondsToSelector:loadSel]) {
+            ((void (*)(id, SEL, NSString *))objc_msgSend)(webVC, loadSel, urlString);
+        } else {
+            SEL setUrlSel = NSSelectorFromString(@"setM_uiUrl:");
+            if ([webVC respondsToSelector:setUrlSel]) {
+                NSURL *url = [NSURL URLWithString:urlString];
+                if (url) ((void (*)(id, SEL, NSURL *))objc_msgSend)(webVC, setUrlSel, url);
+            }
+        }
+    }
 
     UINavigationController *nav = YZWeChatRootNavController();
     if (!nav) return NO;
