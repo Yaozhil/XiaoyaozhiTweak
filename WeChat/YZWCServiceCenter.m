@@ -2,6 +2,7 @@
 #import "YZWCRuntime.h"
 #import "YZCrashGuard.h"
 #import <UIKit/UIKit.h>
+#import <WebKit/WebKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #import <sys/sysctl.h>
@@ -262,59 +263,31 @@ static NSString *YZBrandProfileURLString(NSString *brandUserName) {
     return nil;
 }
 
-/// 使用微信内部 WebView 在当前进程中打开 URL，避免 weixin:// scheme 跳转到官方微信
+/// 使用 WKWebView 在当前进程中打开 URL
 static BOOL YZOpenInWeChatWebView(NSString *urlString) {
     if (urlString.length == 0) return NO;
 
-    // 尝试多种微信内部 WebView 类名
-    NSArray<NSString *> *classNames = @[@"MMWebViewController", @"WCWebViewController", @"MMWebViewUIViewController"];
-    Class webVCClass = nil;
-    for (NSString *name in classNames) {
-        webVCClass = NSClassFromString(name);
-        if (webVCClass) break;
-    }
-    if (!webVCClass) return NO;
-
-    id webVC = nil;
-    // initWithURL: 通常接受 NSString，部分版本接受 NSURL，都试一遍
-    SEL strInitSel = NSSelectorFromString(@"initWithURL:");
-    if ([webVCClass instancesRespondToSelector:strInitSel]) {
-        webVC = ((id (*)(id, SEL, NSString *))objc_msgSend)([webVCClass alloc], strInitSel, urlString);
-    }
-    if (!webVC) {
-        // 尝试 NSURL 参数版本
-        NSURL *url = [NSURL URLWithString:urlString];
-        if (url) {
-            SEL urlInitSel = NSSelectorFromString(@"initWithUrl:");
-            if ([webVCClass instancesRespondToSelector:urlInitSel]) {
-                webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], urlInitSel, url);
-            }
-        }
-    }
-    if (!webVC) {
-        webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
-    }
-    if (!webVC) return NO;
-
-    // 如果 init 不带 URL，尝试手动设置
-    if (webVC) {
-        SEL loadSel = NSSelectorFromString(@"loadURLString:");
-        if ([webVC respondsToSelector:loadSel]) {
-            ((void (*)(id, SEL, NSString *))objc_msgSend)(webVC, loadSel, urlString);
-        } else {
-            SEL setUrlSel = NSSelectorFromString(@"setM_uiUrl:");
-            if ([webVC respondsToSelector:setUrlSel]) {
-                NSURL *url = [NSURL URLWithString:urlString];
-                if (url) ((void (*)(id, SEL, NSURL *))objc_msgSend)(webVC, setUrlSel, url);
-            }
-        }
-    }
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return NO;
 
     UINavigationController *nav = YZWeChatRootNavController();
     if (!nav) return NO;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        [nav pushViewController:webVC animated:YES];
+        WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+        WKWebView *webView = [[WKWebView alloc] initWithFrame:UIScreen.mainScreen.bounds configuration:config];
+        webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        webView.backgroundColor = UIColor.whiteColor;
+        webView.opaque = YES;
+
+        UIViewController *wrapper = [[UIViewController alloc] init];
+        wrapper.view.backgroundColor = UIColor.whiteColor;
+        wrapper.title = @"公众号";
+        [wrapper.view addSubview:webView];
+
+        [webView loadRequest:[NSURLRequest requestWithURL:url]];
+
+        [nav pushViewController:wrapper animated:YES];
     });
     return YES;
 }
