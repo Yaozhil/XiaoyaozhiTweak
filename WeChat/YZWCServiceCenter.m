@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import <string.h>
 #import <sys/sysctl.h>
 
 static NSData *sCachedProfileData = nil;
@@ -116,9 +117,22 @@ static BOOL YZBoolFromSelectors(id target, NSArray<NSString *> *selectorNames, B
         if (![target respondsToSelector:selector]) continue;
 
         @try {
-            BOOL value = ((BOOL (*)(id, SEL))objc_msgSend)(target, selector);
-            if (found) *found = YES;
-            return value;
+            Method method = class_getInstanceMethod([target class], selector);
+            char returnType[16] = {0};
+            if (method) method_getReturnType(method, returnType, sizeof(returnType));
+            if (returnType[0] == '@') {
+                id value = ((id (*)(id, SEL))objc_msgSend)(target, selector);
+                if ([value respondsToSelector:@selector(boolValue)]) {
+                    if (found) *found = YES;
+                    return [value boolValue];
+                }
+                continue;
+            }
+            if (strchr("BcCsSiIlLqQ", returnType[0])) {
+                NSInteger value = ((NSInteger (*)(id, SEL))objc_msgSend)(target, selector);
+                if (found) *found = YES;
+                return value != 0;
+            }
         } @catch (__unused NSException *exception) {
         }
     }
@@ -143,17 +157,30 @@ static BOOL YZBoolFromOneArgSelectors(id target, NSArray<NSString *> *selectorNa
         if (![target respondsToSelector:selector]) continue;
 
         @try {
-            BOOL value = ((BOOL (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
-            if (found) *found = YES;
-            return value;
+            Method method = class_getInstanceMethod([target class], selector);
+            char returnType[16] = {0};
+            if (method) method_getReturnType(method, returnType, sizeof(returnType));
+            if (returnType[0] == '@') {
+                id value = ((id (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
+                if ([value respondsToSelector:@selector(boolValue)]) {
+                    if (found) *found = YES;
+                    return [value boolValue];
+                }
+                continue;
+            }
+            if (strchr("BcCsSiIlLqQ", returnType[0])) {
+                NSInteger value = ((NSInteger (*)(id, SEL, id))objc_msgSend)(target, selector, argument);
+                if (found) *found = YES;
+                return value != 0;
+            }
         } @catch (__unused NSException *exception) {
         }
     }
     return NO;
 }
 
-static BOOL YZContactLooksFollowed(id contact, NSString *brandUserName) {
-    if (!contact || !YZContactUserNameMatches(contact, brandUserName)) return NO;
+static NSInteger YZContactFollowState(id contact, NSString *brandUserName) {
+    if (!contact || !YZContactUserNameMatches(contact, brandUserName)) return -1;
 
     BOOL found = NO;
     BOOL followed = YZBoolFromSelectors(contact, @[
@@ -164,7 +191,7 @@ static BOOL YZContactLooksFollowed(id contact, NSString *brandUserName) {
         @"isBizContactSubscribed",
         @"isOfficialAccountSubscribed"
     ], &found);
-    if (found) return followed;
+    if (found) return followed ? 1 : 0;
 
     followed = YZBoolFromKeys(contact, @[
         @"m_bSubscribed",
@@ -174,9 +201,9 @@ static BOOL YZContactLooksFollowed(id contact, NSString *brandUserName) {
         @"subscribed",
         @"m_isBrandSubscribed"
     ], &found);
-    if (found) return followed;
+    if (found) return followed ? 1 : 0;
 
-    return NO;
+    return -1;
 }
 
 static id YZCreateBrandContact(NSString *brandUserName) {
@@ -475,11 +502,15 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)isBrandFollowing:(NSString *)brandUserName {
-    if (brandUserName.length == 0) return NO;
+    return [self brandFollowState:brandUserName] == 1;
+}
+
++ (NSInteger)brandFollowState:(NSString *)brandUserName {
+    if (brandUserName.length == 0) return -1;
 
     @try {
         id contactMgr = [self getContactManager];
-        if (!contactMgr) return NO;
+        if (!contactMgr) return -1;
 
         BOOL found = NO;
         BOOL subscribed = YZBoolFromOneArgSelectors(contactMgr, @[
@@ -489,13 +520,13 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             @"isBizSubscribed:",
             @"isOfficialAccountSubscribed:"
         ], brandUserName, &found);
-        if (found) return subscribed;
+        if (found) return subscribed ? 1 : 0;
 
         id contact = YZBrandContactFromManager(contactMgr, brandUserName);
-        return YZContactLooksFollowed(contact, brandUserName);
+        return YZContactFollowState(contact, brandUserName);
     } @catch (NSException *exception) {
-        [YZCrashGuard logCrashContext:@"isBrandFollowing"];
-        return NO;
+        [YZCrashGuard logCrashContext:@"brandFollowState"];
+        return -1;
     }
 }
 
@@ -609,7 +640,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     UIViewController *presenter = viewController ?: [self topMostViewController];
     if (YZShouldDismissBeforePresenting(presenter)) {
-        [presenter dismissViewControllerAnimated:YES completion:^{
+        void (^showController)(void) = ^{
             UIViewController *topVC = [self topMostViewController];
             UINavigationController *nav = YZPreferredPushNavigationController(topVC);
             if (nav) {
@@ -617,7 +648,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             } else if (topVC) {
                 [topVC presentViewController:controller animated:YES completion:nil];
             }
-        }];
+        };
+
+        SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
+        if ([presenter respondsToSelector:customDismissSel]) {
+            ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(presenter, customDismissSel, showController);
+        } else {
+            [presenter dismissViewControllerAnimated:YES completion:showController];
+        }
         return YES;
     }
 
@@ -684,11 +722,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }
 
         if (contact) {
-            // 候选资料页类名：通用联系人 → 品牌专用
+            // 候选资料页类名：品牌/公众号专用优先，减少退回通用联系人页后只显示“发送消息”的概率。
             NSArray<NSString *> *vcClassNames = @[
-                @"ContactInfoViewController",
-                @"CContactInfoViewController",
-                @"MMContactInfoViewController",
                 @"CBrandContactInfoViewController",
                 @"BrandContactInfoViewController",
                 @"BrandContactProfileViewController",
@@ -696,6 +731,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
                 @"MMBrandProfileViewController",
                 @"MMBizProfileViewController",
                 @"WCBrandProfileViewController",
+                @"ContactInfoViewController",
+                @"CContactInfoViewController",
+                @"MMContactInfoViewController",
             ];
             Class infoVCClass = nil;
             for (NSString *name in vcClassNames) {

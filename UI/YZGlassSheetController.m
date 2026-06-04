@@ -36,6 +36,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 @property (nonatomic, strong) UIView *followIconView;
 @property (nonatomic, strong) UIScreenEdgePanGestureRecognizer *internalBackGesture;
 @property (nonatomic, assign) BOOL isFollowed;
+@property (nonatomic, assign) NSInteger followState;
 @property (nonatomic, assign) BOOL isPresented;
 @property (nonatomic, assign) NSInteger currentPage; // 0=main, 1=account, 2=all permissions
 @property (nonatomic, assign) BOOL savedInteractivePopEnabled;
@@ -50,6 +51,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     self = [super init];
     if (self) {
         _currentPage = 0;
+        _followState = -1;
     }
     return self;
 }
@@ -798,7 +800,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)refreshFollowStatus {
-    self.isFollowed = [YZWCServiceCenter isBrandFollowing:kGHUserName];
+    self.followState = [YZWCServiceCenter brandFollowState:kGHUserName];
+    self.isFollowed = (self.followState == 1);
     [self updateFollowUI];
 }
 
@@ -809,7 +812,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         self.followStatusLabel.textColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
         self.followDot.backgroundColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
     } else {
-        self.followStatusLabel.text = @"未关注";
+        self.followStatusLabel.text = @"去关注";
         self.followStatusLabel.textColor = [UIColor colorWithRed:0 green:0.478 blue:1.0 alpha:1.0];
         self.followDot.backgroundColor = [UIColor colorWithRed:0 green:0.478 blue:1.0 alpha:1.0];
     }
@@ -829,7 +832,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)handleFollowTap {
-    if (self.isFollowed) {
+    if (self.followState == 1) {
         [self showToast:@"已关注 杳知爱吃米饭"];
         return;
     }

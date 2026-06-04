@@ -19,6 +19,9 @@
 /// 检查公众号是否已关注
 + (BOOL)isBrandFollowing:(NSString *)brandUserName;
 
+/// 公众号关注状态: 1=已关注, 0=未关注, -1=无法确认
++ (NSInteger)brandFollowState:(NSString *)brandUserName;
+
 /// 关注公众号
 + (BOOL)followBrand:(NSString *)brandUserName;
 
