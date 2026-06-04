@@ -78,9 +78,16 @@
     if (!serviceClass) return nil;
 
     id center = [self getServiceCenter];
-    if (!center) return nil;
+    id service = [self safePerformSelector:@selector(getService:) onTarget:center withObject:serviceClass];
+    if (service) return service;
 
-    return [self safePerformSelector:@selector(getService:) onTarget:center withObject:serviceClass];
+    Class contextClass = [self safeGetClass:@"MMContext"];
+    SEL activeUserContextSelector = NSSelectorFromString(@"activeUserContext");
+    if (![contextClass respondsToSelector:activeUserContextSelector]) return nil;
+
+    id context = [self safePerformSelector:activeUserContextSelector onTarget:contextClass];
+    id userCenter = [self safePerformSelector:NSSelectorFromString(@"serviceCenter") onTarget:context];
+    return [self safePerformSelector:@selector(getService:) onTarget:userCenter withObject:serviceClass];
 }
 
 #pragma mark - Bundle Check

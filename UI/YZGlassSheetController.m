@@ -10,12 +10,9 @@
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
 
-extern UIImage *YZEmbeddedDonationImage(void);
 extern UIImage *YZEmbeddedFollowIconImage(void);
 
 static NSString *const kGHUserName = @"gh_5a0621af5c7d";
-static NSInteger const kYZDonationOverlayTag = 95101;
-static NSInteger const kYZDonationCardTag = 95102;
 static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     return @[@"应用组", @"WiFi 访问", @"扩展虚拟地址", @"推送通知", @"钥匙串访问", @"增加内存限制"];
 }
@@ -708,168 +705,6 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }
 }
 
-#pragma mark - Donation
-
-- (UIImage *)donationImage {
-    UIImage *embedded = YZEmbeddedDonationImage();
-    if (embedded) return embedded;
-
-    NSArray<NSString *> *paths = @[
-        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
-        @"/Library/Application Support/XiaoyaozhiTweak/donation.png",
-        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
-        @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png"
-    ];
-
-    NSFileManager *fileManager = NSFileManager.defaultManager;
-    for (NSString *path in paths) {
-        if ([fileManager fileExistsAtPath:path]) {
-            UIImage *image = [UIImage imageWithContentsOfFile:path];
-            if (image) return image;
-        }
-    }
-
-    return nil;
-}
-
-- (void)dismissDonationSheet {
-    UIView *overlay = [self.view viewWithTag:kYZDonationOverlayTag];
-    [UIView animateWithDuration:0.20 animations:^{
-        overlay.alpha = 0;
-    } completion:^(BOOL finished) {
-        [overlay removeFromSuperview];
-    }];
-}
-
-- (void)handleDonationOverlayTap:(UITapGestureRecognizer *)gesture {
-    UIView *overlay = gesture.view;
-    UIView *card = [overlay viewWithTag:kYZDonationCardTag];
-    CGPoint location = [gesture locationInView:overlay];
-    if (card && CGRectContainsPoint(card.frame, location)) return;
-    [self dismissDonationSheet];
-}
-
-- (void)donationImage:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo {
-    if (error) {
-        [self showToast:@"保存失败，请检查相册权限"];
-    } else {
-        [self showToast:@"已保存赞赏码到相册"];
-    }
-}
-
-- (void)handleDonationImageLongPress:(UILongPressGestureRecognizer *)gesture {
-    if (gesture.state != UIGestureRecognizerStateBegan) return;
-
-    UIImage *image = [self donationImage];
-    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"赞赏码操作"
-                                                                   message:@"可以保存后在微信中识别，或复制赞赏对象"
-                                                            preferredStyle:UIAlertControllerStyleActionSheet];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"保存赞赏码到相册" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        if (image) {
-            UIImageWriteToSavedPhotosAlbum(image, self, @selector(donationImage:didFinishSavingWithError:contextInfo:), nil);
-        } else {
-            [self showToast:@"未找到赞赏码资源"];
-        }
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"复制赞赏对象" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        UIPasteboard.generalPasteboard.string = @"杳杳";
-        [self showToast:@"已复制赞赏对象：杳杳"];
-    }]];
-    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-
-    UIPopoverPresentationController *popover = sheet.popoverPresentationController;
-    if (popover) {
-        popover.sourceView = gesture.view;
-        popover.sourceRect = gesture.view.bounds;
-        popover.permittedArrowDirections = UIPopoverArrowDirectionAny;
-    }
-    [self presentViewController:sheet animated:YES completion:nil];
-}
-
-- (void)showDonationSheet {
-    if ([self.view viewWithTag:kYZDonationOverlayTag]) return;
-
-    UIImage *donationImage = [self donationImage];
-    if (!donationImage) {
-        [self showToast:@"未找到赞赏码资源"];
-        return;
-    }
-
-    UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
-    overlay.tag = kYZDonationOverlayTag;
-    overlay.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.22];
-    overlay.alpha = 0;
-    overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [self.view addSubview:overlay];
-
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleDonationOverlayTap:)];
-    [overlay addGestureRecognizer:tap];
-
-    CGFloat width = MIN(self.view.bounds.size.width - 48, 330);
-    CGFloat imageSize = MIN(width - 56, 252);
-    CGFloat cardHeight = imageSize + 164;
-    UIView *card = [[UIView alloc] initWithFrame:CGRectMake((self.view.bounds.size.width - width) / 2.0,
-                                                            (self.view.bounds.size.height - cardHeight) / 2.0,
-                                                            width,
-                                                            cardHeight)];
-    card.tag = kYZDonationCardTag;
-    card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.96];
-    card.layer.cornerRadius = 26;
-    card.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.18].CGColor;
-    card.layer.shadowOpacity = 1;
-    card.layer.shadowRadius = 28;
-    card.layer.shadowOffset = CGSizeMake(0, 12);
-    card.clipsToBounds = NO;
-    [overlay addSubview:card];
-
-    UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(0, 22, width, 24)];
-    title.text = @"投喂一下";
-    title.font = [UIFont systemFontOfSize:20 weight:UIFontWeightSemibold];
-    title.textAlignment = NSTextAlignmentCenter;
-    title.textColor = [UIColor colorWithRed:0.11 green:0.11 blue:0.12 alpha:1.0];
-    [card addSubview:title];
-
-    UILabel *recipient = [[UILabel alloc] initWithFrame:CGRectMake(24, 52, width - 48, 22)];
-    recipient.text = @"赞赏对象：杳杳";
-    recipient.font = [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
-    recipient.textAlignment = NSTextAlignmentCenter;
-    recipient.textColor = [UIColor colorWithRed:0.78 green:0.56 blue:0.12 alpha:1.0];
-    [card addSubview:recipient];
-
-    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake((width - imageSize) / 2.0, 84, imageSize, imageSize)];
-    imageView.image = donationImage;
-    imageView.contentMode = UIViewContentModeScaleAspectFit;
-    imageView.backgroundColor = UIColor.whiteColor;
-    imageView.layer.cornerRadius = 18;
-    imageView.clipsToBounds = YES;
-    imageView.userInteractionEnabled = YES;
-    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleDonationImageLongPress:)];
-    [imageView addGestureRecognizer:longPress];
-    [card addSubview:imageView];
-
-    UILabel *subtitle = [[UILabel alloc] initWithFrame:CGRectMake(20, cardHeight - 58, width - 40, 38)];
-    subtitle.text = @"感谢支持小杳知～\n长按赞赏码可保存/复制对象";
-    subtitle.numberOfLines = 2;
-    subtitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
-    subtitle.textAlignment = NSTextAlignmentCenter;
-    subtitle.textColor = [UIColor colorWithWhite:0.48 alpha:1.0];
-    [card addSubview:subtitle];
-
-    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
-    close.frame = CGRectMake(width - 44, 10, 34, 34);
-    [close setTitle:@"×" forState:UIControlStateNormal];
-    close.titleLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightRegular];
-    close.tintColor = [UIColor colorWithWhite:0.60 alpha:1.0];
-    [close addTarget:self action:@selector(dismissDonationSheet) forControlEvents:UIControlEventTouchUpInside];
-    [card addSubview:close];
-
-    card.transform = CGAffineTransformMakeScale(0.96, 0.96);
-    [UIView animateWithDuration:0.24 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        overlay.alpha = 1;
-        card.transform = CGAffineTransformIdentity;
-    } completion:nil];
-}
-
 #pragma mark - Follow
 
 - (BOOL)isCandidateAvatarImageView:(UIImageView *)imageView {
@@ -985,6 +820,15 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [gen impactOccurred];
 }
 
+- (void)openManualFollowFallback {
+    if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
+        [self showToast:@"已打开公众号主页，请点击关注"];
+    } else {
+        UIPasteboard.generalPasteboard.string = kGHUserName;
+        [self showToast:@"请手动搜索关注 杳知爱吃米饭"];
+    }
+}
+
 - (void)handleFollowTap {
     if (self.isFollowed) {
         [self showToast:@"已关注 杳知爱吃米饭"];
@@ -992,20 +836,19 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }
 
     if ([YZWCServiceCenter followBrand:kGHUserName]) {
-        self.isFollowed = YES;
-        [self updateFollowUI];
         [self showToast:@"关注请求已发送"];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self refreshFollowStatus];
+            if (!self.isFollowed) {
+                [self openManualFollowFallback];
+            }
+        });
         return;
     }
 
     // 降级：打开公众号资料页让用户手动关注
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
-            [self showToast:@"已打开公众号主页，请点击关注"];
-        } else {
-            UIPasteboard.generalPasteboard.string = kGHUserName;
-            [self showToast:@"请手动搜索关注 杳知爱吃米饭"];
-        }
+        [self openManualFollowFallback];
     });
 }
 

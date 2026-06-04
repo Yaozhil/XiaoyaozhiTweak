@@ -3,6 +3,7 @@
 #import "YZCrashGuard.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 #import <sys/sysctl.h>
 
 static NSData *sCachedProfileData = nil;
@@ -63,6 +64,168 @@ static id YZValueForAnyKey(id target, NSArray<NSString *> *keys) {
         }
     }
     return nil;
+}
+
+static id YZBrandContactFromManager(id contactMgr, NSString *brandUserName) {
+    if (!contactMgr || brandUserName.length == 0) return nil;
+
+    NSArray<NSString *> *selectors = @[
+        @"getContactByName:",
+        @"getContactByUserName:",
+        @"getContactByUsrName:",
+        @"getContact:"
+    ];
+    for (NSString *selectorName in selectors) {
+        id contact = YZCallOneArgSelector(contactMgr, selectorName, brandUserName);
+        if (contact) return contact;
+    }
+    return nil;
+}
+
+static BOOL YZContactUserNameMatches(id contact, NSString *brandUserName) {
+    if (!contact || brandUserName.length == 0) return NO;
+
+    NSString *userName = YZStringFromSelectors(contact, @[
+        @"m_nsUsrName",
+        @"m_nsUserName",
+        @"userName",
+        @"usrName",
+        @"getUserName",
+        @"getUsrName"
+    ]);
+    if (!userName) {
+        id value = YZValueForAnyKey(contact, @[@"m_nsUsrName", @"m_nsUserName", @"userName", @"usrName"]);
+        if ([value isKindOfClass:NSString.class]) userName = value;
+    }
+    return userName.length == 0 || [userName isEqualToString:brandUserName];
+}
+
+static BOOL YZBoolFromSelectors(id target, NSArray<NSString *> *selectorNames, BOOL *found) {
+    if (found) *found = NO;
+    for (NSString *selectorName in selectorNames) {
+        SEL selector = NSSelectorFromString(selectorName);
+        if (![target respondsToSelector:selector]) continue;
+
+        @try {
+            BOOL value = ((BOOL (*)(id, SEL))objc_msgSend)(target, selector);
+            if (found) *found = YES;
+            return value;
+        } @catch (__unused NSException *exception) {
+        }
+    }
+    return NO;
+}
+
+static BOOL YZBoolFromKeys(id target, NSArray<NSString *> *keys, BOOL *found) {
+    if (found) *found = NO;
+    id value = YZValueForAnyKey(target, keys);
+    if (!value || value == (id)kCFNull) return NO;
+    if (found) *found = YES;
+    if ([value respondsToSelector:@selector(boolValue)]) return [value boolValue];
+    return NO;
+}
+
+static BOOL YZContactLooksFollowed(id contact, NSString *brandUserName) {
+    if (!contact || !YZContactUserNameMatches(contact, brandUserName)) return NO;
+
+    BOOL found = NO;
+    BOOL followed = YZBoolFromSelectors(contact, @[
+        @"isContact",
+        @"isInContactList",
+        @"isInContact",
+        @"isFriend",
+        @"isAddedContact"
+    ], &found);
+    if (found) return followed;
+
+    followed = YZBoolFromKeys(contact, @[
+        @"m_isContact",
+        @"isContact",
+        @"m_bContact",
+        @"m_bInContactList"
+    ], &found);
+    if (found) return followed;
+
+    return YES;
+}
+
+static id YZCreateBrandContact(NSString *brandUserName) {
+    if (brandUserName.length == 0) return nil;
+
+    Class contactClass = NSClassFromString(@"CContact");
+    if (!contactClass) contactClass = NSClassFromString(@"MMContact");
+    if (!contactClass) return nil;
+
+    id contact = nil;
+    SEL initWithUserName = NSSelectorFromString(@"initWithUserName:");
+    @try {
+        if ([contactClass instancesRespondToSelector:initWithUserName]) {
+            contact = ((id (*)(id, SEL, id))objc_msgSend)([contactClass alloc], initWithUserName, brandUserName);
+        } else {
+            contact = ((id (*)(id, SEL))objc_msgSend)([contactClass alloc], @selector(init));
+        }
+    } @catch (__unused NSException *exception) {
+        contact = nil;
+    }
+    if (!contact) return nil;
+
+    NSArray<NSString *> *setters = @[@"setM_nsUsrName:", @"setM_nsUserName:", @"setUserName:", @"setUsrName:"];
+    for (NSString *selectorName in setters) {
+        SEL selector = NSSelectorFromString(selectorName);
+        if (![contact respondsToSelector:selector]) continue;
+        @try {
+            ((void (*)(id, SEL, id))objc_msgSend)(contact, selector, brandUserName);
+            return contact;
+        } @catch (__unused NSException *exception) {
+        }
+    }
+
+    @try {
+        [contact setValue:brandUserName forKey:@"m_nsUsrName"];
+    } @catch (__unused NSException *exception) {
+    }
+    return contact;
+}
+
+static BOOL YZMethodReturnsBool(id target, SEL selector) {
+    Method method = class_getInstanceMethod([target class], selector);
+    if (!method) return NO;
+
+    char returnType[16] = {0};
+    method_getReturnType(method, returnType, sizeof(returnType));
+    return returnType[0] == 'B' || returnType[0] == 'c' || returnType[0] == 'C';
+}
+
+static BOOL YZInvokeFollowSelector(id manager, NSString *serviceName, NSString *selectorName, id contactOrUserName, NSInteger scene, BOOL includeEnterType) {
+    if (!manager || selectorName.length == 0 || !contactOrUserName) return NO;
+
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![manager respondsToSelector:selector]) return NO;
+
+    @try {
+        NSLog(@"[小杳知] followBrand 尝试 %@.%@ arg=%@ scene=%ld", serviceName, selectorName, NSStringFromClass([contactOrUserName class]), (long)scene);
+        BOOL returnsBool = YZMethodReturnsBool(manager, selector);
+        if (includeEnterType) {
+            if (returnsBool) {
+                return ((BOOL (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene, 1);
+            }
+            ((void (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene, 1);
+        } else if ([selectorName hasSuffix:@":scene:"] || [selectorName containsString:@":scene:"]) {
+            if (returnsBool) {
+                return ((BOOL (*)(id, SEL, id, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene);
+            }
+            ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene);
+        } else {
+            if (returnsBool) {
+                return ((BOOL (*)(id, SEL, id))objc_msgSend)(manager, selector, contactOrUserName);
+            }
+            ((void (*)(id, SEL, id))objc_msgSend)(manager, selector, contactOrUserName);
+        }
+        return YES;
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] followBrand %@.%@ 调用失败: %@", serviceName, selectorName, exception.reason);
+        return NO;
+    }
 }
 
 static BOOL YZLooksLikeAvatarImage(UIImage *image) {
@@ -203,11 +366,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         id contactMgr = [self getContactManager];
         if (!contactMgr) return NO;
 
-        SEL sel = NSSelectorFromString(@"getContactByName:");
-        if (![contactMgr respondsToSelector:sel]) return NO;
-
-        id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, sel, brandUserName);
-        return contact != nil;
+        id contact = YZBrandContactFromManager(contactMgr, brandUserName);
+        return YZContactLooksFollowed(contact, brandUserName);
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"isBrandFollowing"];
         return NO;
@@ -221,8 +381,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         // 服务类候选: CContactMgr → CBrandContactMgr → CBrandMgr → MMBrandContactMgr
         NSArray<NSString *> *serviceClasses = @[@"CContactMgr", @"CBrandContactMgr", @"CBrandMgr", @"MMBrandContactMgr"];
 
+        id contactMgr = [self getContactManager];
+        id existingContact = YZBrandContactFromManager(contactMgr, brandUserName);
+        id syntheticContact = existingContact ?: YZCreateBrandContact(brandUserName);
+        NSArray *argumentCandidates = syntheticContact ? @[brandUserName, syntheticContact] : @[brandUserName];
+
         // selector 候选，按参数个数分三组
         NSArray<NSString *> *sel2Args = @[
+            @"addBrandContactByUserName:scene:",
             @"addBrandContact:scene:",
             @"followBrandContact:scene:",
             @"followBrand:scene:",
@@ -251,7 +417,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         for (NSString *svcClassName in serviceClasses) {
             id mgr = nil;
             if ([svcClassName isEqualToString:@"CContactMgr"]) {
-                mgr = [self getContactManager];
+                mgr = contactMgr;
             } else {
                 mgr = [YZWCRuntime getService:svcClassName];
             }
@@ -259,29 +425,23 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
             // 先尝试两参数版本 (userName, scene)
             for (NSString *selName in sel2Args) {
-                SEL sel = NSSelectorFromString(selName);
-                if (![mgr respondsToSelector:sel]) continue;
-                NSLog(@"[小杳知] followBrand 命中 %@.%@ userName=%@ scene=%ld", svcClassName, selName, brandUserName, (long)scene);
-                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(mgr, sel, brandUserName, scene);
-                return YES;
+                for (id argument in argumentCandidates) {
+                    if (YZInvokeFollowSelector(mgr, svcClassName, selName, argument, scene, NO)) return YES;
+                }
             }
 
             // 再尝试三参数版本 (userName, scene, enterType)
             for (NSString *selName in sel3Args) {
-                SEL sel = NSSelectorFromString(selName);
-                if (![mgr respondsToSelector:sel]) continue;
-                NSLog(@"[小杳知] followBrand 命中 %@.%@ userName=%@ scene=%ld enterType=1", svcClassName, selName, brandUserName, (long)scene);
-                ((void (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(mgr, sel, brandUserName, scene, 1);
-                return YES;
+                for (id argument in argumentCandidates) {
+                    if (YZInvokeFollowSelector(mgr, svcClassName, selName, argument, scene, YES)) return YES;
+                }
             }
 
             // 最后尝试单参数版本 (userName)
             for (NSString *selName in sel1Arg) {
-                SEL sel = NSSelectorFromString(selName);
-                if (![mgr respondsToSelector:sel]) continue;
-                NSLog(@"[小杳知] followBrand 命中 %@.%@ userName=%@", svcClassName, selName, brandUserName);
-                ((void (*)(id, SEL, id))objc_msgSend)(mgr, sel, brandUserName);
-                return YES;
+                for (id argument in argumentCandidates) {
+                    if (YZInvokeFollowSelector(mgr, svcClassName, selName, argument, scene, NO)) return YES;
+                }
             }
         }
 
@@ -294,13 +454,18 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (id)searchBrandContact:(NSString *)brandUserName viaContactMgr:(id)contactMgr {
-    SEL addSel = NSSelectorFromString(@"addBrandContact:scene:");
-    if ([contactMgr respondsToSelector:addSel]) {
-        ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(contactMgr, addSel, brandUserName, 3);
-        SEL getSel = NSSelectorFromString(@"getContactByName:");
-        if ([contactMgr respondsToSelector:getSel]) {
-            return ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, getSel, brandUserName);
+    if (!contactMgr || brandUserName.length == 0) return nil;
+
+    @try {
+        id syntheticContact = YZCreateBrandContact(brandUserName);
+        NSArray *arguments = syntheticContact ? @[brandUserName, syntheticContact] : @[brandUserName];
+        for (id argument in arguments) {
+            if (YZInvokeFollowSelector(contactMgr, @"CContactMgr", @"addBrandContact:scene:", argument, 3, NO)) {
+                id contact = YZBrandContactFromManager(contactMgr, brandUserName);
+                if (contact) return contact;
+            }
         }
+    } @catch (__unused NSException *exception) {
     }
     return nil;
 }
@@ -327,12 +492,12 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     id contactMgr = [self getContactManager];
     if (!contactMgr) return NO;
 
-    SEL getContactSel = NSSelectorFromString(@"getContactByName:");
-    if (![contactMgr respondsToSelector:getContactSel]) return NO;
-
-    id contact = ((id (*)(id, SEL, id))objc_msgSend)(contactMgr, getContactSel, brandUserName);
+    id contact = YZBrandContactFromManager(contactMgr, brandUserName);
     if (!contact) {
         contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
+    }
+    if (!contact) {
+        contact = YZCreateBrandContact(brandUserName);
     }
     if (!contact) return NO;
 
@@ -343,15 +508,19 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
     if (!infoVC) return NO;
 
+    BOOL didSetContact = NO;
     SEL setContactSel = NSSelectorFromString(@"setM_contact:");
     if ([infoVC respondsToSelector:setContactSel]) {
         ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setContactSel, contact);
+        didSetContact = YES;
     } else {
         SEL setUserSel = NSSelectorFromString(@"setUserInfo:");
         if ([infoVC respondsToSelector:setUserSel]) {
             ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setUserSel, contact);
+            didSetContact = YES;
         }
     }
+    if (!didSetContact) return NO;
 
     if (viewController && viewController.navigationController) {
         [viewController.navigationController pushViewController:infoVC animated:YES];
