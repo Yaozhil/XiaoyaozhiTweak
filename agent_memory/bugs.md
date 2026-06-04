@@ -13,7 +13,8 @@
 
 - 公众号自动关注依赖微信私有 `CContactMgr`/品牌号相关 selector；已扩大兼容候选并加入 `CContact/MMContact` 参数兜底，但不同微信版本仍可能变更 selector 或内部校验。
 - `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；微信服务端是否最终完成关注，需要正常账号真机验证。
-- `brandFollowState:` 只信任 subscribe/subscribed 类明确状态；若某微信版本完全不暴露关注状态，会返回无法确认，前台显示“去关注”而不是“已关注”。
+- `brandFollowState:` 只信任 subscribe/subscribed 类明确状态；若某微信版本完全不暴露关注状态，会返回无法确认。前台保留状态布局，但只在确认已关注时显示“已关注”，其他情况显示“去关注”。
+- 用户自己的已关注账号曾被显示为未关注，说明 subscribe/subscribed 字段并非所有微信版本都会暴露真实状态；当前底部入口不再显示“未关注”字样。
 - 参考插件 `com.shtm.xos_1.4.5_iphoneos-arm64e.deb` 为 `data.tar.lzma`，当前 Windows 环境缺少 lzma/xz 工具，暂未能读取内部动态库；`微信助手_3.9-5_无根.deb` 可读取并已提取 selector 线索。
 - `itenfay/WeChat_tweak` 的公众号关注代码年代较早且在当前仓库文件中是注释/历史示例，selector 兼容性仍需真机验证；已只提取最小兼容思路，没有引入网页或外部 scheme。
 - `ways0210/WechatEnhance` 未包含自动关注公众号实现，但其 `NavigationTitleHooks.xm` 有可用的 `ContactInfoViewController` 跳转模式：关闭弹窗后重新获取顶层控制器再 push/present，当前已采用。
@@ -23,7 +24,7 @@
 - 若从插件弹层直接 push 微信页面，目标页面可能被当前弹层遮住；当前已改为插件弹层触发时先 dismiss 再展示，仍需真机确认动画结束后 push 是否可见。
 - 客户测试上一版本出现“能跳公众号主页但无法操作，必须杀后台重开”，高度疑似插件 window overlay 未移除而拦截触摸；当前已改为命中 `dismissAnimatedWithCompletion:` 时先移除 overlay 再跳转，仍需客户复测确认。
 - 打开公众号主页/资料页可能让微信本地生成 contact 缓存，导致列表状态字段误报“已关注”；当前关注判断已改为只信任 subscribe/subscribed 类明确字段，且打开主页链路不再主动写入本地 contact。
-- 点击底部胶囊时，有时进公众号主页、有时像好友发消息页，原因可能是微信版本缺少品牌/公众号专用资料页控制器后回退到通用联系人页；当前已把品牌/公众号专用控制器排到通用联系人控制器之前，但不同微信版本仍需真机确认命中情况。
+- 点击底部胶囊时，`1.1.7` 出现黑屏但有返回按钮，判断为品牌/公众号专用资料页控制器存在但不适合当前初始化参数；当前已停用品牌专用控制器优先策略，回到通用资料页优先，并且不再伪造 contact。
 - 受限账号进入公众号主页只看到“发送消息”、没有关注按钮，可能是微信账号限制或服务端状态导致；插件只能打开正确的微信内部主页，无法绕过微信限制强制关注。
 - `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器或自动关注 selector。当前已禁用 WebView 私有构造，并让底部胶囊不直接调用自动关注私有接口。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。

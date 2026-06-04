@@ -807,7 +807,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)updateFollowUI {
     if (!self.followStatusLabel || !self.followDot) return;
-    if (self.isFollowed) {
+    if (self.followState == 1) {
         self.followStatusLabel.text = @"已关注";
         self.followStatusLabel.textColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
         self.followDot.backgroundColor = [UIColor colorWithRed:0.20 green:0.78 blue:0.35 alpha:1.0];
@@ -832,13 +832,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)handleFollowTap {
-    if (self.followState == 1) {
-        [self showToast:@"已关注 杳知爱吃米饭"];
-        return;
-    }
-
     // 底部胶囊以稳定为先：受限账号和部分微信版本直接调用自动关注私有接口可能闪退。
-    // 首次弹窗仍保留自动关注尝试；底部入口只打开手动关注兜底。
+    // 关注状态字段在不同微信版本不稳定，底部入口不因状态判断阻拦用户进入公众号。
     [self openManualFollowFallback];
 }
 

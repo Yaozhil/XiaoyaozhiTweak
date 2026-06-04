@@ -285,37 +285,31 @@ static BOOL YZInvokeFollowSelector(id manager, NSString *serviceName, NSString *
     }
 }
 
-static id YZCreateBrandProfileController(Class infoVCClass, id contact) {
+static id YZCreateSafeContactInfoController(Class infoVCClass, id contact) {
     if (!infoVCClass || !contact) return nil;
 
     @try {
-        SEL mainBrandInit = NSSelectorFromString(@"initWithMainBrandContact:fromScene:");
-        if ([infoVCClass instancesRespondToSelector:mainBrandInit]) {
-            id vc = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([infoVCClass alloc], mainBrandInit, contact, 3);
+        id vc = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
+        if (vc) {
+            for (NSString *selName in @[@"setM_contact:", @"setContact:", @"setUserInfo:"]) {
+                SEL sel = NSSelectorFromString(selName);
+                if ([vc respondsToSelector:sel]) {
+                    ((void (*)(id, SEL, id))objc_msgSend)(vc, sel, contact);
+                    return vc;
+                }
+            }
+        }
+
+        SEL contactInit = NSSelectorFromString(@"initWithContact:");
+        if ([infoVCClass instancesRespondToSelector:contactInit]) {
+            vc = ((id (*)(id, SEL, id))objc_msgSend)([infoVCClass alloc], contactInit, contact);
             if (vc) return vc;
         }
 
         SEL contactSceneInit = NSSelectorFromString(@"initWithContact:fromScene:");
         if ([infoVCClass instancesRespondToSelector:contactSceneInit]) {
-            id vc = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([infoVCClass alloc], contactSceneInit, contact, 3);
+            vc = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([infoVCClass alloc], contactSceneInit, contact, 3);
             if (vc) return vc;
-        }
-
-        SEL contactInit = NSSelectorFromString(@"initWithContact:");
-        if ([infoVCClass instancesRespondToSelector:contactInit]) {
-            id vc = ((id (*)(id, SEL, id))objc_msgSend)([infoVCClass alloc], contactInit, contact);
-            if (vc) return vc;
-        }
-
-        id vc = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
-        if (!vc) return nil;
-
-        for (NSString *selName in @[@"setM_contact:", @"setContact:", @"setUserInfo:", @"setM_brandContact:", @"setMainBrandContact:"]) {
-            SEL sel = NSSelectorFromString(selName);
-            if ([vc respondsToSelector:sel]) {
-                ((void (*)(id, SEL, id))objc_msgSend)(vc, sel, contact);
-                return vc;
-            }
         }
     } @catch (__unused NSException *exception) {
     }
@@ -699,38 +693,13 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
         }
         if (!contact) {
-            contact = YZCreateBrandContact(brandUserName);
-        }
-
-        // 完善品牌 contact 属性（设置昵称、类型等）
-        if (contact) {
-            // 品牌昵称
-            SEL setNickSel = NSSelectorFromString(@"setM_nsNickName:");
-            if ([contact respondsToSelector:setNickSel]) {
-                ((void (*)(id, SEL, NSString *))objc_msgSend)(contact, setNickSel, @"杳知爱吃米饭");
-            }
-            // 品牌全称
-            SEL setFullSel = NSSelectorFromString(@"setM_nsFullPY:");
-            if ([contact respondsToSelector:setFullSel]) {
-                ((void (*)(id, SEL, NSString *))objc_msgSend)(contact, setFullSel, @"杳知爱吃米饭");
-            }
-            // 标记为公众号类型
-            SEL setTypeSel = NSSelectorFromString(@"setM_uiType:");
-            if ([contact respondsToSelector:setTypeSel]) {
-                ((void (*)(id, SEL, NSUInteger))objc_msgSend)(contact, setTypeSel, 3);
-            }
+            NSLog(@"[小杳知] openBrandProfile 未获取到微信真实公众号 contact，不创建伪 contact，交给复制搜索兜底");
+            return NO;
         }
 
         if (contact) {
-            // 候选资料页类名：品牌/公众号专用优先，减少退回通用联系人页后只显示“发送消息”的概率。
+            // 稳定优先：只使用通用联系人资料页。品牌专用页在 8.0.74 上曾出现黑屏但有返回按钮。
             NSArray<NSString *> *vcClassNames = @[
-                @"CBrandContactInfoViewController",
-                @"BrandContactInfoViewController",
-                @"BrandContactProfileViewController",
-                @"BrandProfileViewController",
-                @"MMBrandProfileViewController",
-                @"MMBizProfileViewController",
-                @"WCBrandProfileViewController",
                 @"ContactInfoViewController",
                 @"CContactInfoViewController",
                 @"MMContactInfoViewController",
@@ -742,7 +711,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             }
 
             if (infoVCClass) {
-                id infoVC = YZCreateBrandProfileController(infoVCClass, contact);
+                id infoVC = YZCreateSafeContactInfoController(infoVCClass, contact);
                 if (infoVC) {
                     if ([infoVC isKindOfClass:UIViewController.class] &&
                         [self presentController:(UIViewController *)infoVC fromViewController:viewController]) {
