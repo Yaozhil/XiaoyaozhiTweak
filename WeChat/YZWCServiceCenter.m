@@ -719,7 +719,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             @"iPhone14,4": @"iPhone 13 mini", @"iPhone14,5": @"iPhone 13", @"iPhone14,2": @"iPhone 13 Pro", @"iPhone14,3": @"iPhone 13 Pro Max", @"iPhone14,6": @"iPhone SE (3rd generation)",
             @"iPhone14,7": @"iPhone 14", @"iPhone14,8": @"iPhone 14 Plus", @"iPhone15,2": @"iPhone 14 Pro", @"iPhone15,3": @"iPhone 14 Pro Max",
             @"iPhone15,4": @"iPhone 15", @"iPhone15,5": @"iPhone 15 Plus", @"iPhone16,1": @"iPhone 15 Pro", @"iPhone16,2": @"iPhone 15 Pro Max",
-            @"iPhone17,3": @"iPhone 16", @"iPhone17,4": @"iPhone 16 Plus", @"iPhone17,1": @"iPhone 16 Pro", @"iPhone17,2": @"iPhone 16 Pro Max", @"iPhone17,5": @"iPhone 16e"
+            @"iPhone17,3": @"iPhone 16", @"iPhone17,4": @"iPhone 16 Plus", @"iPhone17,1": @"iPhone 16 Pro", @"iPhone17,2": @"iPhone 16 Pro Max", @"iPhone17,5": @"iPhone 16e",
+            @"iPhone18,3": @"iPhone 17", @"iPhone18,4": @"iPhone Air", @"iPhone18,1": @"iPhone 17 Pro", @"iPhone18,2": @"iPhone 17 Pro Max", @"iPhone18,5": @"iPhone 17e"
         };
     });
 
@@ -727,9 +728,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (NSString *)genericDeviceModelNameForIdentifier:(NSString *)identifier {
-    if ([identifier hasPrefix:@"iPhone"]) return @"iPhone";
-    if ([identifier hasPrefix:@"iPad"]) return @"iPad";
-    if ([identifier hasPrefix:@"iPod"]) return @"iPod touch";
+    if ([identifier hasPrefix:@"iPhone"]) return [NSString stringWithFormat:@"iPhone (%@)", identifier];
+    if ([identifier hasPrefix:@"iPad"]) return [NSString stringWithFormat:@"iPad (%@)", identifier];
+    if ([identifier hasPrefix:@"iPod"]) return [NSString stringWithFormat:@"iPod touch (%@)", identifier];
     return nil;
 }
 

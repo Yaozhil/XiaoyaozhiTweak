@@ -42,7 +42,7 @@
 
 #pragma mark - 系统与应用信息检测
 
-/// 设备型号（如 iPhone 18,1）
+/// 设备型号（如 iPhone 17 Pro）
 + (NSString *)getDeviceModel;
 
 /// 系统版本（如 26.0）
