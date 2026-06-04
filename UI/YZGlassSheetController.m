@@ -6,7 +6,6 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
-#import "YZRewardView.h"
 
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
@@ -982,9 +981,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)showRewardSheet {
-    [self dismissAnimatedWithCompletion:^{
-        [YZRewardView openRewardPageFromViewController:nil fallback:nil];
-    }];
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [gen impactOccurred];
 }
 
 - (void)handleFollowTap {
@@ -1025,7 +1023,12 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
         CGSize s = [msg boundingRectWithSize:CGSizeMake(260, 60) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:toast.font} context:nil].size;
         CGFloat tw = MIN(ceil(s.width)+36, 280), th = ceil(s.height)+20;
-        toast.frame = CGRectMake((self.view.bounds.size.width-tw)/2.0, self.view.bounds.size.height*0.7, tw, th);
+        CGFloat toastY = self.view.bounds.size.height * 0.7;
+        if (self.bottomBar) {
+            toastY = CGRectGetMinY(self.bottomBar.frame) - th - 12;
+        }
+        toastY = MAX(96, MIN(toastY, self.view.bounds.size.height - th - 36));
+        toast.frame = CGRectMake((self.view.bounds.size.width-tw)/2.0, toastY, tw, th);
         [self.view addSubview:toast];
 
         [UIView animateWithDuration:0.22 animations:^{ toast.alpha = 1; } completion:^(BOOL d){
