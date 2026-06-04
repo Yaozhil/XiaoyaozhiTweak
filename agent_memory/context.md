@@ -25,4 +25,4 @@
 - 用户当前不需要展示赞赏弹窗或真实赞赏页直达；旧赞赏扫码/赞赏码 provider 已从构建中移除并删除。
 - 首次弹窗必须等待当前微信账号可检测到后再展示，避免未登录时提前标记已展示。
 - 首次弹窗的自动关注失败时只提示失败；底部胶囊自动关注失败时再打开公众号资料页或复制公众号 ID 供手动关注。
-- 用户提供成熟插件实际可跳转的公众号主页链接：`https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124`；底部胶囊失败兜底应优先通过微信 `businessWebview` scheme 打开该链接，避免自建 WKWebView 触发“请在微信客户端打开链接”。
+- 用户提供公众号主页链接：`https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124`；因定制包 bundle id 与官方微信不同，禁止在底部胶囊兜底中调用 `weixin://` 外部 scheme，避免跳到官方微信并弹 `invalid_source`。

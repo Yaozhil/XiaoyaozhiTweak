@@ -263,14 +263,6 @@ static NSString *YZBrandProfileURLString(NSString *brandUserName) {
     return nil;
 }
 
-static NSString *YZPercentEncodeQueryValue(NSString *value) {
-    if (value.length == 0) return @"";
-
-    NSMutableCharacterSet *allowed = [[NSCharacterSet alphanumericCharacterSet] mutableCopy];
-    [allowed addCharactersInString:@"-._~"];
-    return [value stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
-}
-
 /// 获取当前微信进程的 User-Agent（含 MicroMessenger 标识），线程安全
 static NSString *YZWeChatUserAgent(void) {
     static NSString *sCachedUA = nil;
@@ -366,53 +358,9 @@ static BOOL YZOpenInWKWebView(NSString *urlString) {
     return YES;
 }
 
-static BOOL YZOpenApplicationURLString(NSString *urlString, void (^failureHandler)(void)) {
-    if (urlString.length == 0) return NO;
-
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return NO;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIApplication *application = UIApplication.sharedApplication;
-        if (@available(iOS 10.0, *)) {
-            [application openURL:url options:@{} completionHandler:^(BOOL success) {
-                if (!success && failureHandler) failureHandler();
-            }];
-        } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            BOOL success = [application openURL:url];
-#pragma clang diagnostic pop
-            if (!success && failureHandler) failureHandler();
-        }
-    });
-    return YES;
-}
-
-static BOOL YZOpenWeChatBusinessWebViewURL(NSString *profileURL, NSString *brandUserName) {
-    if (profileURL.length == 0) return NO;
-
-    NSString *redirectURL = [profileURL containsString:@"#"] ? profileURL : [profileURL stringByAppendingString:@"#wechat_redirect"];
-    NSString *encodedURL = YZPercentEncodeQueryValue(redirectURL);
-    if (encodedURL.length == 0) return NO;
-
-    NSString *businessScheme = [NSString stringWithFormat:@"weixin://dl/businessWebview/link/?appid=&url=%@", encodedURL];
-    NSString *contactScheme = brandUserName.length > 0 ? [NSString stringWithFormat:@"weixin://contacts/profile/%@", brandUserName] : nil;
-
-    return YZOpenApplicationURLString(businessScheme, ^{
-        if (contactScheme.length > 0) {
-            YZOpenApplicationURLString(contactScheme, ^{
-                YZOpenInWKWebView(profileURL);
-            });
-        } else {
-            YZOpenInWKWebView(profileURL);
-        }
-    });
-}
-
 static BOOL YZOpenBrandProfileURLFallback(NSString *brandUserName) {
     NSString *profileURL = YZBrandProfileURLString(brandUserName);
-    if (profileURL.length > 0 && YZOpenWeChatBusinessWebViewURL(profileURL, brandUserName)) return YES;
+    if (profileURL.length > 0 && YZOpenInWKWebView(profileURL)) return YES;
     return NO;
 }
 
@@ -677,11 +625,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
 
-    // 已知目标公众号优先走微信内置 WebView 路由，避免自建 WKWebView 显示“请在微信客户端打开链接”。
-    if ([brandUserName isEqualToString:kYZOfficialAccountUserName] && YZOpenBrandProfileURLFallback(brandUserName)) {
-        return YES;
-    }
-
     UINavigationController *pushNav = viewController.navigationController ?: YZWeChatRootNavController();
 
     // ── 第一优先：微信原生 CContactInfoViewController ──
@@ -751,7 +694,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }
     }
 
-    // ── 降级：微信路由 / 联系人 scheme / WKWebView 打开公众号主页 ──
+    // ── 降级：仅在当前定制包进程内使用 WKWebView，不调用 weixin:// 外部 scheme ──
     return YZOpenBrandProfileURLFallback(brandUserName);
 }
 
