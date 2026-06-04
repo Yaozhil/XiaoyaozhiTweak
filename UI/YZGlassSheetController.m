@@ -824,7 +824,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
         return;
     }
-    UIPasteboard.generalPasteboard.string = kGHUserName;
+    UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
 }
 
 - (void)handleFollowTap {
