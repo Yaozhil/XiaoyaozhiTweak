@@ -17,6 +17,7 @@ XiaoyaozhiTweak_FILES = XiaoyaozhiTweak.xm \
 	UI/YZParticleEffectView.m \
 	WeChat/YZWCRuntime.m \
 	WeChat/YZWCServiceCenter.m \
+	WeChat/YZGameCheatHook.xm \
 	Optimizer/YZAsyncExecutor.m \
 	Optimizer/YZMemoryCache.m \
 	Guard/YZCrashGuard.m \
