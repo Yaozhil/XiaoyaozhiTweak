@@ -33,7 +33,7 @@
 - 已收紧底部胶囊展示流程：若从 `YZGlassSheetController` 插件弹层触发，先关闭弹层，再 push 微信原生资料页或内部 WebView，避免页面被插件弹层挡住导致看起来“没跳转”。
 - 用户真机反馈：受限微信号点击底部后能进入公众号主页，但返回后底栏由“未关注”变为“已关注”；同时主页只有“发送消息”没有关注按钮。当前已调整为优先打开微信内部 WebView 的 mp 主页，并移除打开主页链路中的 `addLocalContact:listType:`、`getContactsFromServer:`、`addBrandContact:scene:` 等本地 contact 写入/刷新动作，避免污染关注状态。
 - 已恢复“常用功能”空壳入口：主菜单保留“常用功能”，子页仅显示“暂无功能”，不包含小游戏或任何开关。
-- 用户反馈“常用功能”不需要进入子页；当前已改为主菜单行显示“暂未开放”，点击只震动并 toast“暂未开放”，不再进入空壳子页。
+- 用户反馈“常用功能”不需要进入子页，也不要在右侧直接显示“暂未开放”；当前主菜单仍显示右箭头，点击只震动并 toast“暂未开放”，不进入空壳子页。
 - 用户提供 `WeChat-2026-06-05-004816.ips`，崩溃为主线程手势触发后的 `doesNotRecognizeSelector`/`SIGABRT`，调用栈经过 `XiaoyaozhiTweak.dylib`。当前已禁用 `MMWebViewController` 私有构造路径，并将底部胶囊改为不直接调用自动关注私有 selector，先保证入口稳定；后续如拿到确认安全的微信内部 WebView/API 再恢复更强兜底。
 - 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 

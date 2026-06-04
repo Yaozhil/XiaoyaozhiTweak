@@ -416,8 +416,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (self.currentPage == 0) {
         cell.textLabel.text = @[@"到期信息", @"常用功能", @"投喂一下"][ip.row];
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
-        cell.detailTextLabel.text = ip.row == 1 ? @"暂未开放" : @"";
-        cell.accessoryView = ip.row == 1 ? nil : [self arrowView];
+        cell.detailTextLabel.text = @"";
+        cell.accessoryView = [self arrowView];
         return cell;
     }
 
