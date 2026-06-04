@@ -9,6 +9,8 @@
 static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
+static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
+static NSString *const kYZOfficialAccountBiz = @"MzYzOTc5MzgwNw==";
 
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
@@ -226,6 +228,36 @@ static BOOL YZInvokeFollowSelector(id manager, NSString *serviceName, NSString *
         NSLog(@"[小杳知] followBrand %@.%@ 调用失败: %@", serviceName, selectorName, exception.reason);
         return NO;
     }
+}
+
+static BOOL YZOpenURLString(NSString *urlString) {
+    if (urlString.length == 0) return NO;
+
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return NO;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+    });
+    return YES;
+}
+
+static NSString *YZBrandProfileURLString(NSString *brandUserName) {
+    if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
+        return [NSString stringWithFormat:@"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=%@&scene=124", kYZOfficialAccountBiz];
+    }
+    return nil;
+}
+
+static NSString *YZBrandContactProfileURLString(NSString *brandUserName) {
+    if (brandUserName.length == 0) return nil;
+    return [NSString stringWithFormat:@"weixin://contacts/profile/%@", brandUserName];
+}
+
+static BOOL YZOpenBrandProfileURLFallback(NSString *brandUserName) {
+    NSString *profileURL = YZBrandProfileURLString(brandUserName);
+    if (profileURL.length > 0 && YZOpenURLString(profileURL)) return YES;
+    return YZOpenURLString(YZBrandContactProfileURLString(brandUserName));
 }
 
 static BOOL YZLooksLikeAvatarImage(UIImage *image) {
@@ -488,9 +520,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
+    if (YZBrandProfileURLString(brandUserName).length > 0) {
+        return YZOpenBrandProfileURLFallback(brandUserName);
+    }
 
     id contactMgr = [self getContactManager];
-    if (!contactMgr) return NO;
+    if (!contactMgr) {
+        return YZOpenBrandProfileURLFallback(brandUserName);
+    }
 
     id contact = YZBrandContactFromManager(contactMgr, brandUserName);
     if (!contact) {
@@ -499,14 +536,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     if (!contact) {
         contact = YZCreateBrandContact(brandUserName);
     }
-    if (!contact) return NO;
+    if (!contact) return YZOpenBrandProfileURLFallback(brandUserName);
 
     Class infoVCClass = NSClassFromString(@"CContactInfoViewController");
     if (!infoVCClass) infoVCClass = NSClassFromString(@"MMContactInfoViewController");
-    if (!infoVCClass) return NO;
+    if (!infoVCClass) return YZOpenBrandProfileURLFallback(brandUserName);
 
     id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
-    if (!infoVC) return NO;
+    if (!infoVC) return YZOpenBrandProfileURLFallback(brandUserName);
 
     BOOL didSetContact = NO;
     SEL setContactSel = NSSelectorFromString(@"setM_contact:");
@@ -520,7 +557,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             didSetContact = YES;
         }
     }
-    if (!didSetContact) return NO;
+    if (!didSetContact) return YZOpenBrandProfileURLFallback(brandUserName);
 
     if (viewController && viewController.navigationController) {
         [viewController.navigationController pushViewController:infoVC animated:YES];
@@ -533,7 +570,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         return YES;
     }
 
-    return NO;
+    return YZOpenBrandProfileURLFallback(brandUserName);
 }
 
 + (UIImage *)getSelfAvatar {
