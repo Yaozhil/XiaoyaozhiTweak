@@ -639,66 +639,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
-    Class webVCClass = NSClassFromString(@"MMWebViewController");
-    if (!webVCClass) webVCClass = NSClassFromString(@"WCWebViewController");
-    if (!webVCClass) webVCClass = NSClassFromString(@"MMWebViewController_Navigation");
-    if (!webVCClass) return NO;
-
-    id webVC = nil;
-    NSURL *profileURL = [NSURL URLWithString:kYZOfficialAccountProfileURL];
-    NSArray *urlCandidates = profileURL ? @[kYZOfficialAccountProfileURL, profileURL] : @[kYZOfficialAccountProfileURL];
-    @try {
-        SEL init3 = NSSelectorFromString(@"initWithURL:presentModal:extraInfo:");
-        if ([webVCClass instancesRespondToSelector:init3]) {
-            for (id url in urlCandidates) {
-                webVC = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)([webVCClass alloc], init3, url, NO, nil);
-                if (webVC) break;
-            }
-        }
-
-        if (!webVC) {
-            SEL init2 = NSSelectorFromString(@"initWithURL:presentModal:");
-            if ([webVCClass instancesRespondToSelector:init2]) {
-                for (id url in urlCandidates) {
-                    webVC = ((id (*)(id, SEL, id, BOOL))objc_msgSend)([webVCClass alloc], init2, url, NO);
-                    if (webVC) break;
-                }
-            }
-        }
-
-        if (!webVC) {
-            SEL initURL = NSSelectorFromString(@"initWithURL:");
-            if ([webVCClass instancesRespondToSelector:initURL]) {
-                for (id url in urlCandidates) {
-                    webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURL, url);
-                    if (webVC) break;
-                }
-            }
-        }
-
-        if (!webVC) {
-            SEL initURLString = NSSelectorFromString(@"initWithURLString:");
-            if ([webVCClass instancesRespondToSelector:initURLString]) {
-                webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURLString, kYZOfficialAccountProfileURL);
-            }
-        }
-
-        if (!webVC) {
-            webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
-            for (NSString *selectorName in @[@"setURL:", @"setUrl:", @"setM_nsURL:", @"setM_nsUrl:"]) {
-                SEL selector = NSSelectorFromString(selectorName);
-                if ([webVC respondsToSelector:selector]) {
-                    ((void (*)(id, SEL, id))objc_msgSend)(webVC, selector, kYZOfficialAccountProfileURL);
-                    break;
-                }
-            }
-        }
-    } @catch (__unused NSException *exception) {
-        webVC = nil;
-    }
-
-    if (![webVC isKindOfClass:UIViewController.class]) return NO;
-    return [self presentController:(UIViewController *)webVC fromViewController:viewController];
+    // 8.0.74 真机崩溃日志显示底部胶囊点击后触发 doesNotRecognizeSelector，
+    // 调用栈经过本插件。MMWebViewController 私有构造器在不同微信版本签名不稳定，
+    // @try 无法兜住所有 objc_msgSend 崩溃，先禁用该路径，避免点击即闪退。
+    return NO;
 }
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {

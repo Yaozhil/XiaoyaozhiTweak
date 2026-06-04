@@ -23,6 +23,7 @@
 - 若从插件弹层直接 push 微信页面，目标页面可能被当前弹层遮住；当前已改为插件弹层触发时先 dismiss 再展示，仍需真机确认动画结束后 push 是否可见。
 - 打开公众号主页/资料页可能让微信本地生成 contact 缓存，导致 `isInContactList:` 或 contact 列表字段误报“已关注”；当前关注判断已改为只信任 subscribe/subscribed 类明确字段，且打开主页链路不再主动写入本地 contact。
 - 受限账号进入公众号主页只看到“发送消息”、没有关注按钮，可能是微信账号限制或服务端状态导致；插件只能打开正确的微信内部主页，无法绕过微信限制强制关注。
+- `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器或自动关注 selector。当前已禁用 WebView 私有构造，并让底部胶囊不直接调用自动关注私有接口。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
 
 ## 失败尝试
