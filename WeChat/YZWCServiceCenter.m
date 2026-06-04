@@ -74,11 +74,43 @@ static id YZBrandContactFromManager(id contactMgr, NSString *brandUserName) {
         @"getContactByName:",
         @"getContactByUserName:",
         @"getContactByUsrName:",
+        @"getContactForSearchByName:",
         @"getContact:"
     ];
     for (NSString *selectorName in selectors) {
         id contact = YZCallOneArgSelector(contactMgr, selectorName, brandUserName);
         if (contact) return contact;
+    }
+    return nil;
+}
+
+static void YZPrepareBrandContactFromServer(id contactMgr, id contact) {
+    if (!contactMgr || !contact) return;
+
+    @try {
+        SEL addLocalSel = NSSelectorFromString(@"addLocalContact:listType:");
+        if ([contactMgr respondsToSelector:addLocalSel]) {
+            ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(contactMgr, addLocalSel, contact, 2);
+        }
+    } @catch (__unused NSException *exception) {
+    }
+
+    @try {
+        SEL fetchSel = NSSelectorFromString(@"getContactsFromServer:");
+        if ([contactMgr respondsToSelector:fetchSel]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(contactMgr, fetchSel, @[contact]);
+        }
+    } @catch (__unused NSException *exception) {
+    }
+}
+
+static id YZSearchBrandContactFromServer(id contactMgr, NSString *brandUserName) {
+    if (!contactMgr || brandUserName.length == 0) return nil;
+
+    id contact = YZCallOneArgSelector(contactMgr, @"getContactForSearchByName:", brandUserName);
+    if (contact) {
+        YZPrepareBrandContactFromServer(contactMgr, contact);
+        return contact;
     }
     return nil;
 }
@@ -520,11 +552,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     if (!contactMgr || brandUserName.length == 0) return nil;
 
     @try {
+        id contact = YZSearchBrandContactFromServer(contactMgr, brandUserName);
+        if (contact) return contact;
+
         id syntheticContact = YZCreateBrandContact(brandUserName);
         NSArray *arguments = syntheticContact ? @[brandUserName, syntheticContact] : @[brandUserName];
         for (id argument in arguments) {
             if (YZInvokeFollowSelector(contactMgr, @"CContactMgr", @"addBrandContact:scene:", argument, 3, NO)) {
-                id contact = YZBrandContactFromManager(contactMgr, brandUserName);
+                contact = YZBrandContactFromManager(contactMgr, brandUserName);
                 if (contact) return contact;
             }
         }
@@ -588,6 +623,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         if (contact) {
             // 候选资料页类名：通用联系人 → 品牌专用
             NSArray<NSString *> *vcClassNames = @[
+                @"ContactInfoViewController",
                 @"CContactInfoViewController",
                 @"MMContactInfoViewController",
                 @"CBrandContactInfoViewController",
