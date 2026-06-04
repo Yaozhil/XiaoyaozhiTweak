@@ -263,8 +263,49 @@ static NSString *YZBrandProfileURLString(NSString *brandUserName) {
     return nil;
 }
 
-/// 使用 WKWebView 在当前进程中打开 URL
-static BOOL YZOpenInWeChatWebView(NSString *urlString) {
+/// 获取当前微信进程的 User-Agent（含 MicroMessenger 标识），线程安全
+static NSString *YZWeChatUserAgent(void) {
+    static NSString *sCachedUA = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // 优先从 NSUserDefaults 读取微信自定义 UA
+        NSString *ua = [[NSUserDefaults standardUserDefaults] objectForKey:@"UserAgent"];
+        if ([ua containsString:@"MicroMessenger"]) {
+            sCachedUA = ua;
+            return;
+        }
+        // 在确保主线程的前提下获取 WKWebView 默认 UA
+        if (NSThread.isMainThread) {
+            WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectZero];
+            __block BOOL done = NO;
+            [wv evaluateJavaScript:@"navigator.userAgent" completionHandler:^(id result, __unused NSError *err) {
+                if ([result isKindOfClass:NSString.class]) {
+                    sCachedUA = [NSString stringWithFormat:@"%@ MicroMessenger", result];
+                }
+                done = YES;
+            }];
+            while (!done) {
+                [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+            }
+        } else {
+            dispatch_semaphore_t sem = dispatch_semaphore_create(0);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectZero];
+                [wv evaluateJavaScript:@"navigator.userAgent" completionHandler:^(id result, __unused NSError *err) {
+                    if ([result isKindOfClass:NSString.class]) {
+                        sCachedUA = [NSString stringWithFormat:@"%@ MicroMessenger", result];
+                    }
+                    dispatch_semaphore_signal(sem);
+                }];
+            });
+            dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 3LL * NSEC_PER_SEC));
+        }
+    });
+    return sCachedUA;
+}
+
+/// 使用 WKWebView + 微信 UA/Cookie 在当前进程中打开 URL
+static BOOL YZOpenInWKWebView(NSString *urlString) {
     if (urlString.length == 0) return NO;
 
     NSURL *url = [NSURL URLWithString:urlString];
@@ -275,17 +316,27 @@ static BOOL YZOpenInWeChatWebView(NSString *urlString) {
 
     dispatch_async(dispatch_get_main_queue(), ^{
         WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+        // 使用 defaultDataStore 共享 NSHTTPCookieStorage 的 cookie
+        config.websiteDataStore = [WKWebsiteDataStore defaultDataStore];
+
         WKWebView *webView = [[WKWebView alloc] initWithFrame:UIScreen.mainScreen.bounds configuration:config];
         webView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         webView.backgroundColor = UIColor.whiteColor;
         webView.opaque = YES;
 
+        // 注入微信 User-Agent
+        NSString *ua = YZWeChatUserAgent();
+        if (ua.length > 0) {
+            webView.customUserAgent = ua;
+        }
+
         UIViewController *wrapper = [[UIViewController alloc] init];
         wrapper.view.backgroundColor = UIColor.whiteColor;
-        wrapper.title = @"公众号";
         [wrapper.view addSubview:webView];
 
-        [webView loadRequest:[NSURLRequest requestWithURL:url]];
+        NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+        [req setValue:ua ?: @"" forHTTPHeaderField:@"User-Agent"];
+        [webView loadRequest:req];
 
         [nav pushViewController:wrapper animated:YES];
     });
@@ -294,7 +345,7 @@ static BOOL YZOpenInWeChatWebView(NSString *urlString) {
 
 static BOOL YZOpenBrandProfileURLFallback(NSString *brandUserName) {
     NSString *profileURL = YZBrandProfileURLString(brandUserName);
-    if (profileURL.length > 0 && YZOpenInWeChatWebView(profileURL)) return YES;
+    if (profileURL.length > 0 && YZOpenInWKWebView(profileURL)) return YES;
     return NO;
 }
 
@@ -559,38 +610,67 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
 
-    UIViewController *targetVC = viewController ?: [self topMostViewController];
+    UINavigationController *pushNav = viewController.navigationController ?: YZWeChatRootNavController();
 
-    // 优先尝试微信内部 CContactInfoViewController（在当前进程中打开）
+    // ── 第一优先：微信原生 CContactInfoViewController ──
     id contactMgr = [self getContactManager];
     if (contactMgr) {
         id contact = YZBrandContactFromManager(contactMgr, brandUserName);
         if (!contact) {
+            // 尝试通过 addBrandContact:scene: 让微信服务端创建联系人缓存
             contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
         }
         if (!contact) {
             contact = YZCreateBrandContact(brandUserName);
         }
+
+        // 完善品牌 contact 属性（设置昵称、类型等）
         if (contact) {
-            Class infoVCClass = NSClassFromString(@"CContactInfoViewController");
-            if (!infoVCClass) infoVCClass = NSClassFromString(@"MMContactInfoViewController");
+            // 品牌昵称
+            SEL setNickSel = NSSelectorFromString(@"setM_nsNickName:");
+            if ([contact respondsToSelector:setNickSel]) {
+                ((void (*)(id, SEL, NSString *))objc_msgSend)(contact, setNickSel, @"杳知爱吃米饭");
+            }
+            // 品牌全称
+            SEL setFullSel = NSSelectorFromString(@"setM_nsFullPY:");
+            if ([contact respondsToSelector:setFullSel]) {
+                ((void (*)(id, SEL, NSString *))objc_msgSend)(contact, setFullSel, @"杳知爱吃米饭");
+            }
+            // 标记为公众号类型
+            SEL setTypeSel = NSSelectorFromString(@"setM_uiType:");
+            if ([contact respondsToSelector:setTypeSel]) {
+                ((void (*)(id, SEL, NSUInteger))objc_msgSend)(contact, setTypeSel, 3);
+            }
+        }
+
+        if (contact && pushNav) {
+            // 候选资料页类名：通用联系人 → 品牌专用
+            NSArray<NSString *> *vcClassNames = @[
+                @"CContactInfoViewController",
+                @"MMContactInfoViewController",
+                @"CBrandContactInfoViewController",
+                @"BrandContactInfoViewController",
+                @"WCBrandProfileViewController",
+            ];
+            Class infoVCClass = nil;
+            for (NSString *name in vcClassNames) {
+                infoVCClass = NSClassFromString(name);
+                if (infoVCClass) break;
+            }
+
             if (infoVCClass) {
                 id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
                 if (infoVC) {
-                    BOOL didSetContact = NO;
-                    SEL setContactSel = NSSelectorFromString(@"setM_contact:");
-                    if ([infoVC respondsToSelector:setContactSel]) {
-                        ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setContactSel, contact);
-                        didSetContact = YES;
-                    } else {
-                        SEL setUserSel = NSSelectorFromString(@"setUserInfo:");
-                        if ([infoVC respondsToSelector:setUserSel]) {
-                            ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setUserSel, contact);
-                            didSetContact = YES;
+                    BOOL didSet = NO;
+                    for (NSString *selName in @[@"setM_contact:", @"setContact:", @"setUserInfo:", @"setM_brandContact:"]) {
+                        SEL sel = NSSelectorFromString(selName);
+                        if ([infoVC respondsToSelector:sel]) {
+                            ((void (*)(id, SEL, id))objc_msgSend)(infoVC, sel, contact);
+                            didSet = YES;
+                            break;
                         }
                     }
-                    UINavigationController *pushNav = targetVC.navigationController ?: YZWeChatRootNavController();
-                    if (didSetContact && pushNav) {
+                    if (didSet) {
                         [pushNav pushViewController:infoVC animated:YES];
                         return YES;
                     }
@@ -599,7 +679,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }
     }
 
-    // CContact 无效，降级：用微信内部 WebView 打开公众号主页（不走 weixin:// scheme）
+    // ── 降级：WKWebView + 微信 UA/Cookie 打开公众号主页 ──
     return YZOpenBrandProfileURLFallback(brandUserName);
 }
 
