@@ -230,36 +230,6 @@ static BOOL YZInvokeFollowSelector(id manager, NSString *serviceName, NSString *
     }
 }
 
-static BOOL YZOpenURLString(NSString *urlString) {
-    if (urlString.length == 0) return NO;
-
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return NO;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
-    });
-    return YES;
-}
-
-static NSString *YZURLEncodedQueryValue(NSString *value) {
-    if (value.length == 0) return @"";
-
-    NSMutableCharacterSet *allowed = [NSCharacterSet URLQueryAllowedCharacterSet].mutableCopy;
-    [allowed removeCharactersInString:@"&=+?"];
-    return [value stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
-}
-
-static NSString *YZWeChatBusinessWebViewURLString(NSString *webURLString) {
-    NSString *encodedURL = YZURLEncodedQueryValue(webURLString);
-    if (encodedURL.length == 0) return nil;
-    return [NSString stringWithFormat:@"weixin://dl/businessWebview/link/?appid=&url=%@", encodedURL];
-}
-
-static BOOL YZOpenWeChatBusinessWebView(NSString *webURLString) {
-    return YZOpenURLString(YZWeChatBusinessWebViewURLString(webURLString));
-}
-
 static NSString *YZBrandProfileURLString(NSString *brandUserName) {
     if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
         return [NSString stringWithFormat:@"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=%@&scene=124", kYZOfficialAccountBiz];
@@ -267,15 +237,54 @@ static NSString *YZBrandProfileURLString(NSString *brandUserName) {
     return nil;
 }
 
-static NSString *YZBrandContactProfileURLString(NSString *brandUserName) {
-    if (brandUserName.length == 0) return nil;
-    return [NSString stringWithFormat:@"weixin://contacts/profile/%@", brandUserName];
+/// 使用微信内部 MMWebViewController 在当前进程中打开 URL，避免 weixin:// scheme 跳转到官方微信
+static BOOL YZOpenInWeChatWebView(NSString *urlString) {
+    if (urlString.length == 0) return NO;
+
+    Class webVCClass = NSClassFromString(@"MMWebViewController");
+    if (!webVCClass) return NO;
+
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return NO;
+
+    id webVC = nil;
+    SEL urlInitSel = NSSelectorFromString(@"initWithURL:");
+    if ([webVCClass instancesRespondToSelector:urlInitSel]) {
+        webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], urlInitSel, url);
+    }
+    if (!webVC) {
+        webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
+    }
+    if (!webVC) return NO;
+
+    UIWindow *keyWindow = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
+            for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                if (w.isKeyWindow) { keyWindow = w; break; }
+            }
+            if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+            break;
+        }
+    }
+    UIViewController *root = keyWindow.rootViewController;
+    while (root.presentedViewController) root = root.presentedViewController;
+    UINavigationController *nav = root.navigationController;
+    if (!nav && [root isKindOfClass:UINavigationController.class]) {
+        nav = (UINavigationController *)root;
+    }
+    if (!nav) return NO;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [nav pushViewController:webVC animated:YES];
+    });
+    return YES;
 }
 
 static BOOL YZOpenBrandProfileURLFallback(NSString *brandUserName) {
     NSString *profileURL = YZBrandProfileURLString(brandUserName);
-    if (profileURL.length > 0 && YZOpenWeChatBusinessWebView(profileURL)) return YES;
-    return YZOpenURLString(YZBrandContactProfileURLString(brandUserName));
+    if (profileURL.length > 0 && YZOpenInWeChatWebView(profileURL)) return YES;
+    return NO;
 }
 
 static BOOL YZLooksLikeAvatarImage(UIImage *image) {
@@ -538,56 +547,47 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
-    if (YZBrandProfileURLString(brandUserName).length > 0) {
-        return YZOpenBrandProfileURLFallback(brandUserName);
-    }
 
+    UIViewController *targetVC = viewController ?: [self topMostViewController];
+
+    // 优先尝试微信内部 CContactInfoViewController（在当前进程中打开）
     id contactMgr = [self getContactManager];
-    if (!contactMgr) {
-        return YZOpenBrandProfileURLFallback(brandUserName);
-    }
-
-    id contact = YZBrandContactFromManager(contactMgr, brandUserName);
-    if (!contact) {
-        contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
-    }
-    if (!contact) {
-        contact = YZCreateBrandContact(brandUserName);
-    }
-    if (!contact) return YZOpenBrandProfileURLFallback(brandUserName);
-
-    Class infoVCClass = NSClassFromString(@"CContactInfoViewController");
-    if (!infoVCClass) infoVCClass = NSClassFromString(@"MMContactInfoViewController");
-    if (!infoVCClass) return YZOpenBrandProfileURLFallback(brandUserName);
-
-    id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
-    if (!infoVC) return YZOpenBrandProfileURLFallback(brandUserName);
-
-    BOOL didSetContact = NO;
-    SEL setContactSel = NSSelectorFromString(@"setM_contact:");
-    if ([infoVC respondsToSelector:setContactSel]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setContactSel, contact);
-        didSetContact = YES;
-    } else {
-        SEL setUserSel = NSSelectorFromString(@"setUserInfo:");
-        if ([infoVC respondsToSelector:setUserSel]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setUserSel, contact);
-            didSetContact = YES;
+    if (contactMgr) {
+        id contact = YZBrandContactFromManager(contactMgr, brandUserName);
+        if (!contact) {
+            contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
+        }
+        if (!contact) {
+            contact = YZCreateBrandContact(brandUserName);
+        }
+        if (contact) {
+            Class infoVCClass = NSClassFromString(@"CContactInfoViewController");
+            if (!infoVCClass) infoVCClass = NSClassFromString(@"MMContactInfoViewController");
+            if (infoVCClass) {
+                id infoVC = ((id (*)(id, SEL))objc_msgSend)([infoVCClass alloc], @selector(init));
+                if (infoVC) {
+                    BOOL didSetContact = NO;
+                    SEL setContactSel = NSSelectorFromString(@"setM_contact:");
+                    if ([infoVC respondsToSelector:setContactSel]) {
+                        ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setContactSel, contact);
+                        didSetContact = YES;
+                    } else {
+                        SEL setUserSel = NSSelectorFromString(@"setUserInfo:");
+                        if ([infoVC respondsToSelector:setUserSel]) {
+                            ((void (*)(id, SEL, id))objc_msgSend)(infoVC, setUserSel, contact);
+                            didSetContact = YES;
+                        }
+                    }
+                    if (didSetContact && targetVC.navigationController) {
+                        [targetVC.navigationController pushViewController:infoVC animated:YES];
+                        return YES;
+                    }
+                }
+            }
         }
     }
-    if (!didSetContact) return YZOpenBrandProfileURLFallback(brandUserName);
 
-    if (viewController && viewController.navigationController) {
-        [viewController.navigationController pushViewController:infoVC animated:YES];
-        return YES;
-    }
-
-    UIViewController *topVC = [self topMostViewController];
-    if (topVC && topVC.navigationController) {
-        [topVC.navigationController pushViewController:infoVC animated:YES];
-        return YES;
-    }
-
+    // CContact 无效，降级：用微信内部 WebView 打开公众号主页（不走 weixin:// scheme）
     return YZOpenBrandProfileURLFallback(brandUserName);
 }
 
