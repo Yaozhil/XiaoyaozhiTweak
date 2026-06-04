@@ -85,35 +85,10 @@ static id YZBrandContactFromManager(id contactMgr, NSString *brandUserName) {
     return nil;
 }
 
-static void YZPrepareBrandContactFromServer(id contactMgr, id contact) {
-    if (!contactMgr || !contact) return;
-
-    @try {
-        SEL addLocalSel = NSSelectorFromString(@"addLocalContact:listType:");
-        if ([contactMgr respondsToSelector:addLocalSel]) {
-            ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(contactMgr, addLocalSel, contact, 2);
-        }
-    } @catch (__unused NSException *exception) {
-    }
-
-    @try {
-        SEL fetchSel = NSSelectorFromString(@"getContactsFromServer:");
-        if ([contactMgr respondsToSelector:fetchSel]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(contactMgr, fetchSel, @[contact]);
-        }
-    } @catch (__unused NSException *exception) {
-    }
-}
-
 static id YZSearchBrandContactFromServer(id contactMgr, NSString *brandUserName) {
     if (!contactMgr || brandUserName.length == 0) return nil;
 
-    id contact = YZCallOneArgSelector(contactMgr, @"getContactForSearchByName:", brandUserName);
-    if (contact) {
-        YZPrepareBrandContactFromServer(contactMgr, contact);
-        return contact;
-    }
-    return nil;
+    return YZCallOneArgSelector(contactMgr, @"getContactForSearchByName:", brandUserName);
 }
 
 static BOOL YZContactUserNameMatches(id contact, NSString *brandUserName) {
@@ -182,18 +157,22 @@ static BOOL YZContactLooksFollowed(id contact, NSString *brandUserName) {
 
     BOOL found = NO;
     BOOL followed = YZBoolFromSelectors(contact, @[
-        @"isInContactList",
-        @"isInContact",
-        @"isMyContact"
+        @"isSubscribed",
+        @"isSubscribe",
+        @"isBrandSubscribed",
+        @"isBizSubscribed",
+        @"isBizContactSubscribed",
+        @"isOfficialAccountSubscribed"
     ], &found);
     if (found) return followed;
 
     followed = YZBoolFromKeys(contact, @[
-        @"m_bInContactList",
-        @"m_isInContactList",
-        @"m_isInContact",
-        @"isInContactList",
-        @"isInContact"
+        @"m_bSubscribed",
+        @"m_isSubscribed",
+        @"isSubscribed",
+        @"is_subscribed",
+        @"subscribed",
+        @"m_isBrandSubscribed"
     ], &found);
     if (found) return followed;
 
@@ -503,12 +482,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         if (!contactMgr) return NO;
 
         BOOL found = NO;
-        BOOL inContactList = YZBoolFromOneArgSelectors(contactMgr, @[
-            @"isInContactList:",
-            @"isInContact:",
-            @"isMyContact:"
+        BOOL subscribed = YZBoolFromOneArgSelectors(contactMgr, @[
+            @"isSubscribed:",
+            @"isSubscribe:",
+            @"isBrandSubscribed:",
+            @"isBizSubscribed:",
+            @"isOfficialAccountSubscribed:"
         ], brandUserName, &found);
-        if (found) return inContactList;
+        if (found) return subscribed;
 
         id contact = YZBrandContactFromManager(contactMgr, brandUserName);
         return YZContactLooksFollowed(contact, brandUserName);
@@ -601,17 +582,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     if (!contactMgr || brandUserName.length == 0) return nil;
 
     @try {
-        id contact = YZSearchBrandContactFromServer(contactMgr, brandUserName);
-        if (contact) return contact;
-
-        id syntheticContact = YZCreateBrandContact(brandUserName);
-        NSArray *arguments = syntheticContact ? @[brandUserName, syntheticContact] : @[brandUserName];
-        for (id argument in arguments) {
-            if (YZInvokeFollowSelector(contactMgr, @"CContactMgr", @"addBrandContact:scene:", argument, 3, NO)) {
-                contact = YZBrandContactFromManager(contactMgr, brandUserName);
-                if (contact) return contact;
-            }
-        }
+        return YZSearchBrandContactFromServer(contactMgr, brandUserName);
     } @catch (__unused NSException *exception) {
     }
     return nil;
@@ -733,12 +704,16 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
 
-    // ── 第一优先：微信原生 CContactInfoViewController ──
+    if ([self openBrandWebProfileFromViewController:viewController]) {
+        return YES;
+    }
+
+    // ── 兜底：微信原生 CContactInfoViewController ──
     id contactMgr = [self getContactManager];
     if (contactMgr) {
         id contact = YZBrandContactFromManager(contactMgr, brandUserName);
         if (!contact) {
-            // 尝试通过 addBrandContact:scene: 让微信服务端创建联系人缓存
+            // 只读取搜索 contact，不写入本地联系人列表，避免污染“已关注”判断。
             contact = [self searchBrandContact:brandUserName viaContactMgr:contactMgr];
         }
         if (!contact) {
@@ -803,10 +778,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }
     } else {
         NSLog(@"[小杳知] openBrandProfile 未获取到 CContactMgr");
-    }
-
-    if ([self openBrandWebProfileFromViewController:viewController]) {
-        return YES;
     }
 
     // 外部 scheme 会跳到官方微信；自建 WKWebView 会显示“请在微信客户端打开链接”。最终失败时交给 UI 复制公众号名称。

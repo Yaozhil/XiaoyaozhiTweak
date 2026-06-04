@@ -31,6 +31,8 @@
 - 用户补充的大佬插件录屏/截图显示 mp 主页可在微信原生 WebView 内打开，UA 含 `MicroMessenger/8.0.74`，页面报“操作频繁，请稍后再试”更像微信服务端频控；当前已新增 `MMWebViewController`/`WCWebViewController` 内部 WebView 兜底打开公众号主页 URL。
 - 用户补充正常微信号打开大佬公众号的调试截图：Network 里 `action=urlcheck` 携带 `__biz`、`scene=124`、`url_list`，响应 `base_resp.ret=0` 且 `is_ok=true`，证明微信内部 WebView 会走 A8Key/urlcheck，是当前主页兜底的正确通道。
 - 已收紧底部胶囊展示流程：若从 `YZGlassSheetController` 插件弹层触发，先关闭弹层，再 push 微信原生资料页或内部 WebView，避免页面被插件弹层挡住导致看起来“没跳转”。
+- 用户真机反馈：受限微信号点击底部后能进入公众号主页，但返回后底栏由“未关注”变为“已关注”；同时主页只有“发送消息”没有关注按钮。当前已调整为优先打开微信内部 WebView 的 mp 主页，并移除打开主页链路中的 `addLocalContact:listType:`、`getContactsFromServer:`、`addBrandContact:scene:` 等本地 contact 写入/刷新动作，避免污染关注状态。
+- 已恢复“常用功能”空壳入口：主菜单保留“常用功能”，子页仅显示“暂无功能”，不包含小游戏或任何开关。
 - 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 
 ## 下一步
@@ -38,6 +40,7 @@
 - 推送后等待 GitHub Actions 构建结果。
 - 真机验证首次弹窗倒计时、确认按钮、自动关注请求、失败提示，以及底部胶囊失败后是否留在定制包内打开原生资料页；若无法打开，应只复制公众号名称并提示搜索，不再显示“请在微信客户端打开链接”。
 - 当前重点验证：未关注/受限账号在插件底部是否不再误显示“已关注”；点击底部关注后，原生资料页失败时是否进入微信内部 WebView 的公众号主页，而不是外跳官方微信或自建 WKWebView。
+- 继续重点验证：进入公众号主页再返回后，底栏是否仍保持“未关注”；常用功能入口是否存在且为空壳。
 - 用户当前测试微信账号功能受限，关注成功与否需要正常账号客户或解除限制后最终确认。
 
 ## 验证方式

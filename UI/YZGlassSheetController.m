@@ -37,7 +37,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 @property (nonatomic, strong) UIScreenEdgePanGestureRecognizer *internalBackGesture;
 @property (nonatomic, assign) BOOL isFollowed;
 @property (nonatomic, assign) BOOL isPresented;
-@property (nonatomic, assign) NSInteger currentPage; // 0=main, 1=account, 2=all permissions
+@property (nonatomic, assign) NSInteger currentPage; // 0=main, 1=account, 2=all permissions, 3=common
 @property (nonatomic, assign) BOOL savedInteractivePopEnabled;
 @property (nonatomic, assign) BOOL hasSavedInteractivePopState;
 @end
@@ -357,12 +357,14 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tv {
     if (self.currentPage == 0) return 1;
     if (self.currentPage == 2) return 1;
+    if (self.currentPage == 3) return 1;
     return 5; // 用户信息 应用信息 证书信息 权限信息 查看全部
 }
 
 - (NSInteger)tableView:(UITableView *)tv numberOfRowsInSection:(NSInteger)sec {
-    if (self.currentPage == 0) return 2;
+    if (self.currentPage == 0) return 3;
     if (self.currentPage == 2) return [self orderedEntitlementNames].count;
+    if (self.currentPage == 3) return 1;
     switch (sec) {
         case 0: return 2;  // 用户信息（2行）
         case 1: return 5;  // 应用信息
@@ -383,6 +385,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 - (NSString *)tableView:(UITableView *)tv titleForHeaderInSection:(NSInteger)sec {
     if (self.currentPage == 0) return nil;
     if (self.currentPage == 2) return @"全部权限";
+    if (self.currentPage == 3) return @"常用功能";
     if (sec == 4) return nil;
     return @[@"用户信息", @"应用信息", @"证书信息", @"权限信息"][sec];
 }
@@ -414,7 +417,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
-        cell.textLabel.text = @[@"到期信息", @"投喂一下"][ip.row];
+        cell.textLabel.text = @[@"到期信息", @"常用功能", @"投喂一下"][ip.row];
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
@@ -424,6 +427,16 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     // ====== 全部权限子页 ======
     if (self.currentPage == 2) {
         return [self entitlementCell:cell atRow:ip.row section:ip.section];
+    }
+
+    // ====== 常用功能空壳 ======
+    if (self.currentPage == 3) {
+        cell.accessoryView = nil;
+        cell.textLabel.font = [UIFont systemFontOfSize:17];
+        cell.textLabel.text = @"暂无功能";
+        cell.detailTextLabel.text = @"";
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        return cell;
     }
 
     // ====== 到期信息页 ======
@@ -555,7 +568,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (self.currentPage == 0) {
         if (ip.row == 0) [self goToAccountInfo];
-        else if (ip.row == 1) [self showRewardSheet];
+        else if (ip.row == 1) [self goToCommonFunctions];
+        else if (ip.row == 2) [self showRewardSheet];
         return;
     }
     // 用户信息行可点击复制
@@ -682,13 +696,23 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [self reloadTableAtTop];
 }
 
+- (void)goToCommonFunctions {
+    self.currentPage = 3;
+    [self updateBackButtonVisibility];
+    [self updateInteractivePopGesture];
+    self.navTitle.hidden = NO;
+    self.navTitle.text = @"常用功能";
+    self.infoButton.hidden = YES;
+    [self reloadTableAtTop];
+}
+
 - (void)didTapBack {
     if (self.currentPage == 2) {
         self.currentPage = 1;
         [self updateInteractivePopGesture];
         self.navTitle.text = @"到期信息";
         [self reloadTableAtTop];
-    } else if (self.currentPage == 1) {
+    } else if (self.currentPage == 1 || self.currentPage == 3) {
         self.currentPage = 0;
         [self updateBackButtonVisibility];
         [self updateInteractivePopGesture];
