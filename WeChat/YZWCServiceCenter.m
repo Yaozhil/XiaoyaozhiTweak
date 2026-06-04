@@ -298,6 +298,14 @@ static id YZCreateBrandProfileController(Class infoVCClass, id contact) {
     return nil;
 }
 
+static UINavigationController *YZNavigationControllerFromViewController(UIViewController *viewController) {
+    if (!viewController) return nil;
+    if ([viewController isKindOfClass:UINavigationController.class]) {
+        return (UINavigationController *)viewController;
+    }
+    return viewController.navigationController;
+}
+
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
 static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
@@ -650,8 +658,25 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
                     UIViewController *presenter = viewController ?: [self topMostViewController];
                     if (presenter) {
-                        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:infoVC];
-                        [presenter presentViewController:nav animated:YES completion:nil];
+                        if (presenter.presentingViewController) {
+                            [presenter dismissViewControllerAnimated:YES completion:^{
+                                UIViewController *topVC = [self topMostViewController];
+                                UINavigationController *nav = YZNavigationControllerFromViewController(topVC);
+                                if (nav) {
+                                    [nav pushViewController:infoVC animated:YES];
+                                } else if (topVC) {
+                                    [topVC presentViewController:infoVC animated:YES completion:nil];
+                                }
+                            }];
+                            return YES;
+                        }
+
+                        UINavigationController *nav = YZNavigationControllerFromViewController(presenter);
+                        if (nav) {
+                            [nav pushViewController:infoVC animated:YES];
+                        } else {
+                            [presenter presentViewController:infoVC animated:YES completion:nil];
+                        }
                         return YES;
                     }
 
