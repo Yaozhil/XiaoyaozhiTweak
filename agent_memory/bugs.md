@@ -5,7 +5,7 @@
 - 用户真机反馈：点击“投喂一下”曾直接黑屏；原因指向菜单入口 present 微信私有扫码控制器后未成功跳转。当前已按用户要求移除所有可见赞赏行为，仅保留震动。
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。
-- 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`。当前已移除外部 scheme 调用，兜底仅在当前进程内走原生资料页/WKWebView，最终复制公众号名称提示搜索。
+- 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”。当前已移除外部 scheme 和 WKWebView 兜底，原生资料页打不开时复制公众号名称提示搜索。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 
 ## 风险与待确认
@@ -13,7 +13,7 @@
 - 公众号自动关注依赖微信私有 `CContactMgr`/品牌号相关 selector；已扩大兼容候选并加入 `CContact/MMContact` 参数兜底，但不同微信版本仍可能变更 selector 或内部校验。
 - `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；微信服务端是否最终完成关注，需要正常账号真机验证。
 - `isBrandFollowing:` 已优先读取联系人状态 selector；若某微信版本完全不暴露关注状态，只能回退到联系人对象存在这一保守兼容判断。
-- 自建 WKWebView 仍可能被 mp.weixin.qq.com 页面识别为非微信内置网页；它只作为当前进程内最后网页兜底，不能保证一定显示手动关注按钮。
+- 参考插件 `com.shtm.xos_1.4.5_iphoneos-arm64e.deb` 为 `data.tar.lzma`，当前 Windows 环境缺少 lzma/xz 工具，暂未能读取内部动态库；`微信助手_3.9-5_无根.deb` 可读取并已提取 selector 线索。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
 
 ## 失败尝试
