@@ -16,6 +16,7 @@
 - 1.2.7 改为 WCEhance 风格后仍需真机验证微信版本兼容性。
 - 真实赞赏页链路依赖微信私有扫码类，类名或 selector 随微信版本变化时仍可能失效。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，WSL 未安装可用发行版，未完成编译级验证。
+- 公众号自动关注依赖微信私有 `CContactMgr`/品牌号相关 selector；代码只能按 selector 是否命中判断请求是否发出，真机仍需确认微信版本是否真正完成关注。
 
 ## 失败尝试
 

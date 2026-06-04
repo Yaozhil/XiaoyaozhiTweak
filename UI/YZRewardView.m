@@ -230,31 +230,18 @@ extern UIImage *YZEmbeddedDonationImage(void);
     }
 
     UIViewController *controller = keyWindow.rootViewController;
-    BOOL advanced = YES;
-    while (controller && advanced) {
-        advanced = NO;
-        if ([controller isKindOfClass:UITabBarController.class]) {
-            UIViewController *selected = ((UITabBarController *)controller).selectedViewController;
-            if (selected) {
-                controller = selected;
-                advanced = YES;
-                continue;
-            }
-        }
-        if ([controller isKindOfClass:UINavigationController.class]) {
-            UIViewController *visible = ((UINavigationController *)controller).visibleViewController;
-            if (visible) {
-                controller = visible;
-                advanced = YES;
-                continue;
-            }
-        }
-        if (controller.presentedViewController) {
-            controller = controller.presentedViewController;
-            advanced = YES;
-        }
+    if ([controller isKindOfClass:UITabBarController.class]) {
+        UIViewController *selected = ((UITabBarController *)controller).selectedViewController;
+        if (selected) controller = selected;
     }
-    return controller;
+
+    if ([controller isKindOfClass:UINavigationController.class]) {
+        NSArray<UIViewController *> *controllers = ((UINavigationController *)controller).viewControllers;
+        UIViewController *first = controllers.firstObject;
+        if (first) controller = first;
+    }
+
+    return controller ?: keyWindow.rootViewController;
 }
 
 + (id)newLogicControllerWithViewController:(UIViewController *)viewController logicParams:(id)logicParams {
@@ -300,21 +287,14 @@ extern UIImage *YZEmbeddedDonationImage(void);
 }
 
 + (UIImage *)rewardScanImageFromImage:(UIImage *)image {
-    if (!image) return nil;
-
-    CGFloat w = image.size.width;
-    CGFloat h = image.size.height;
-    CGFloat side = MIN(w, h) * 0.52;
-    CGRect rect = CGRectMake((w - side) / 2.0, h * 0.12, side, side);
-    UIImage *cropped = [self croppedImage:image rect:rect];
-    return cropped ?: image;
+    return image;
 }
 
 + (BOOL)scanRewardImage:(UIImage *)image withWeChatFromViewController:(UIViewController *)viewController {
     if (!image) return NO;
 
     UIImage *scanImage = [self rewardScanImageFromImage:image] ?: image;
-    UIViewController *host = [self rewardHostViewController];
+    UIViewController *host = [self rewardHostViewController] ?: viewController;
     if (!host) return NO;
 
     Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");

@@ -46,6 +46,7 @@ static YZGlassSheetController *gSheetController = nil;
 static BOOL gYZAlertScheduled = NO;
 static BOOL gYZAlertPresenting = NO;
 static BOOL gYZCountdownCancelled = NO;
+static BOOL gYZAlertShownThisSession = NO;
 static BOOL gYZMaoPluginRegistered = NO;
 static BOOL gYZMaoPluginRegisterRetryScheduled = NO;
 static NSInteger gYZAlertPresentAttempts = 0;
@@ -54,6 +55,7 @@ static id gYZBecomeActiveToken = nil;
 static id gYZDidLoadToken = nil;
 static id gYZWillUnloadToken = nil;
 static id gYZMemoryWarningToken = nil;
+static id gYZDidEnterBackgroundToken = nil;
 static char kYZWeChatSettingsEntryInjectedKey;
 
 // ============================================================
@@ -90,7 +92,7 @@ static __attribute__((unused)) void YZShowGlassSheet(void) {
         if (NSProcessInfo.processInfo.isLowPowerModeEnabled) return;
 
         // 防止重复弹出
-        if (gSheetController && gSheetController.isPresented) return;
+        if (gSheetController && (gSheetController.isPresented || gSheetController.view.superview)) return;
 
         if (![YZCrashGuard checkAndLogCrashForLocation:@"showSheet"]) return;
 
@@ -102,6 +104,14 @@ static __attribute__((unused)) void YZShowGlassSheet(void) {
         [defaults setDouble:[[NSDate date] timeIntervalSince1970] forKey:kYZPluginActivationKey];
         [defaults synchronize];
     });
+}
+
+static void YZDismissGlassSheetIfNeeded(void) {
+    if (!gSheetController) return;
+    if (gSheetController.isPresented || gSheetController.view.superview) {
+        [gSheetController dismissAnimated];
+    }
+    gSheetController = nil;
 }
 
 static NSString *YZShownKeyForCurrentInstall(void) {
@@ -134,16 +144,37 @@ static NSString *YZInstallFingerprintForCurrentBundle(void) {
 }
 
 static BOOL YZShouldShowAlert(void) {
-    NSString *fp = YZInstallFingerprintForCurrentBundle();
-    id stored = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
-    if (![stored isKindOfClass:NSString.class]) return YES;
-    return ![(NSString *)stored isEqualToString:fp];
+    // 本次进程会话已展示过，绝不再弹
+    if (gYZAlertShownThisSession) return NO;
+
+    // 必须等微信账号可用后再弹，避免新安装但尚未登录时提前展示。
+    NSString *currentUserName = [YZWCServiceCenter getCurrentUserName];
+    if (currentUserName.length == 0) return NO;
+
+    // 检查是否新微信号登录（同一设备切换账号）
+    NSString *lastUserKey = [NSString stringWithFormat:@"%@_LastUser", kYZShownKey];
+    NSString *lastUserName = [NSUserDefaults.standardUserDefaults stringForKey:lastUserKey];
+    if (![currentUserName isEqualToString:lastUserName]) {
+        return YES;
+    }
+
+    // 检查安装指纹（覆盖更新 / 新安装）
+    NSString *currentFingerprint = YZInstallFingerprintForCurrentBundle();
+    id storedFingerprint = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
+    if (![storedFingerprint isKindOfClass:NSString.class]) return YES;
+    return ![(NSString *)storedFingerprint isEqualToString:currentFingerprint];
 }
 
 static void YZMarkAlertShown(void) {
-    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
-    [d setObject:YZInstallFingerprintForCurrentBundle() forKey:YZShownKeyForCurrentInstall()];
-    [d synchronize];
+    gYZAlertShownThisSession = YES;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setObject:YZInstallFingerprintForCurrentBundle() forKey:YZShownKeyForCurrentInstall()];
+    NSString *userName = [YZWCServiceCenter getCurrentUserName];
+    if (userName.length > 0) {
+        NSString *lastUserKey = [NSString stringWithFormat:@"%@_LastUser", kYZShownKey];
+        [defaults setObject:userName forKey:lastUserKey];
+    }
+    [defaults synchronize];
 }
 
 static UIViewController *YZTopViewControllerFromRoot(UIViewController *rootViewController) {
@@ -290,7 +321,7 @@ static BOOL YZPerformFollow(void) {
 
     if ([YZWCServiceCenter followBrand:userName]) {
         NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
-        YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
+        YZShowToast([NSString stringWithFormat:@"关注请求已发送，请验证是否关注 %@", name]);
         return YES;
     }
 
@@ -308,8 +339,14 @@ static void YZPresentAlertIfPossible(void) {
             gYZAlertPresentAttempts = 0;
             return;
         }
-        // 微信未登录时不弹窗，等登录后回到前台通过 DidBecomeActive 自动重试
-        if (![YZWCServiceCenter isLoggedIn]) return;
+        if ([YZWCServiceCenter getCurrentUserName].length == 0) {
+            gYZAlertPresentAttempts += 1;
+            if (gYZAlertPresentAttempts < kYZMaxAlertPresentAttempts) {
+                YZScheduleAlertAfterDelay(kYZRetryAlertDelaySeconds);
+            }
+            return;
+        }
+
         if (!YZShouldShowAlert() || gYZAlertPresenting) {
             gYZAlertPresentAttempts = 0;
             return;
@@ -332,7 +369,10 @@ static void YZPresentAlertIfPossible(void) {
 
         UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:kYZAlertCancelText
                                                                style:UIAlertActionStyleCancel
-                                                             handler:^(__unused UIAlertAction *action) {}];
+                                                             handler:^(__unused UIAlertAction *action) {
+            gYZAlertShownThisSession = YES;
+            gYZAlertPresenting = NO;
+        }];
         cancelAction.enabled = NO;
         YZSetActionTextColorSafely(cancelAction, promptColor);
 
@@ -367,7 +407,7 @@ static void YZPresentAlertIfPossible(void) {
 static void YZScheduleAlertAfterDelay(NSTimeInterval delay) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (![[YZPluginLifecycle sharedInstance] isPluginActive]) return;
-        if (gYZAlertScheduled || gYZAlertPresenting || !YZShouldShowAlert()) return;
+        if (gYZAlertScheduled || gYZAlertPresenting) return;
 
         gYZAlertScheduled = YES;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -598,7 +638,7 @@ static void YZXiaoyaozhiInit(void) {
                                                   object:nil queue:[NSOperationQueue mainQueue]
                                               usingBlock:^(__unused NSNotification *note) {
                 gYZIsPluginLoaded = NO;
-                if (gSheetController && gSheetController.isPresented) { [gSheetController dismissAnimated]; gSheetController = nil; }
+                YZDismissGlassSheetIfNeeded();
                 [[YZMemoryCache shared] removeAllObjects];
                 // 移除所有 observer
                 NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
@@ -606,13 +646,20 @@ static void YZXiaoyaozhiInit(void) {
                 if (gYZDidLoadToken) { [center removeObserver:gYZDidLoadToken]; gYZDidLoadToken = nil; }
                 if (gYZWillUnloadToken) { [center removeObserver:gYZWillUnloadToken]; gYZWillUnloadToken = nil; }
                 if (gYZMemoryWarningToken) { [center removeObserver:gYZMemoryWarningToken]; gYZMemoryWarningToken = nil; }
+                if (gYZDidEnterBackgroundToken) { [center removeObserver:gYZDidEnterBackgroundToken]; gYZDidEnterBackgroundToken = nil; }
             }];
 
             gYZMemoryWarningToken = [nc addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
                                                      object:nil queue:[NSOperationQueue mainQueue]
                                                  usingBlock:^(__unused NSNotification *note) {
                 [[YZMemoryCache shared] purgeOnMemoryWarning];
-                if (gSheetController && !gSheetController.isPresented) gSheetController = nil;
+                if (gSheetController && !gSheetController.isPresented && !gSheetController.view.superview) gSheetController = nil;
+            }];
+
+            gYZDidEnterBackgroundToken = [nc addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                         object:nil queue:[NSOperationQueue mainQueue]
+                                                     usingBlock:^(__unused NSNotification *note) {
+                YZDismissGlassSheetIfNeeded();
             }];
 
             CFAbsoluteTime mainTime = CFAbsoluteTimeGetCurrent() - mainStartTime;

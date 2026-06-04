@@ -218,36 +218,74 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     if (brandUserName.length == 0) return NO;
 
     @try {
-        id contactMgr = [self getContactManager];
-        if (!contactMgr) return NO;
+        // 服务类候选: CContactMgr → CBrandContactMgr → CBrandMgr → MMBrandContactMgr
+        NSArray<NSString *> *serviceClasses = @[@"CContactMgr", @"CBrandContactMgr", @"CBrandMgr", @"MMBrandContactMgr"];
 
-        // 尝试多种方法签名，适配不同微信版本
-        NSArray<NSValue *> *candidates = @[
-            [NSValue valueWithPointer:NSSelectorFromString(@"addBrandContact:scene:")],
-            [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:scene:")],
-            [NSValue valueWithPointer:NSSelectorFromString(@"addBrandContact:scene:enterType:")],
-            [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:scene:enterType:")],
-            [NSValue valueWithPointer:NSSelectorFromString(@"addContact:scene:")],
-            [NSValue valueWithPointer:NSSelectorFromString(@"followBrandContact:")],
+        // selector 候选，按参数个数分三组
+        NSArray<NSString *> *sel2Args = @[
+            @"addBrandContact:scene:",
+            @"followBrandContact:scene:",
+            @"followBrand:scene:",
+            @"subscribeBrandContact:scene:",
+            @"subscribeBrand:scene:",
+            @"addBrand:scene:",
+            @"addContact:scene:",
+            @"followContact:scene:",
+        ];
+        NSArray<NSString *> *sel3Args = @[
+            @"addBrandContact:scene:enterType:",
+            @"followBrandContact:scene:enterType:",
+            @"followBrand:scene:enterType:",
+            @"subscribeBrandContact:scene:enterType:",
+            @"subscribeBrand:scene:enterType:",
+            @"addBrand:scene:enterType:",
+            @"addContact:scene:enterType:",
+        ];
+        NSArray<NSString *> *sel1Arg = @[
+            @"followBrandContact:",
+            @"subscribeBrandContact:",
         ];
 
         NSInteger scene = 3;
 
-        for (NSValue *selValue in candidates) {
-            SEL sel = selValue.pointerValue;
-            if (![contactMgr respondsToSelector:sel]) continue;
-
-            NSString *selStr = NSStringFromSelector(sel);
-            if ([selStr containsString:@"scene:"] && [selStr containsString:@"enterType:"]) {
-                ((void (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(contactMgr, sel, brandUserName, scene, 1);
-            } else if ([selStr containsString:@"scene:"]) {
-                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(contactMgr, sel, brandUserName, scene);
+        for (NSString *svcClassName in serviceClasses) {
+            id mgr = nil;
+            if ([svcClassName isEqualToString:@"CContactMgr"]) {
+                mgr = [self getContactManager];
             } else {
-                ((void (*)(id, SEL, id))objc_msgSend)(contactMgr, sel, brandUserName);
+                mgr = [YZWCRuntime getService:svcClassName];
             }
-            return YES;
+            if (!mgr) continue;
+
+            // 先尝试两参数版本 (userName, scene)
+            for (NSString *selName in sel2Args) {
+                SEL sel = NSSelectorFromString(selName);
+                if (![mgr respondsToSelector:sel]) continue;
+                NSLog(@"[小杳知] followBrand 命中 %@.%@ userName=%@ scene=%ld", svcClassName, selName, brandUserName, (long)scene);
+                ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(mgr, sel, brandUserName, scene);
+                return YES;
+            }
+
+            // 再尝试三参数版本 (userName, scene, enterType)
+            for (NSString *selName in sel3Args) {
+                SEL sel = NSSelectorFromString(selName);
+                if (![mgr respondsToSelector:sel]) continue;
+                NSLog(@"[小杳知] followBrand 命中 %@.%@ userName=%@ scene=%ld enterType=1", svcClassName, selName, brandUserName, (long)scene);
+                ((void (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(mgr, sel, brandUserName, scene, 1);
+                return YES;
+            }
+
+            // 最后尝试单参数版本 (userName)
+            for (NSString *selName in sel1Arg) {
+                SEL sel = NSSelectorFromString(selName);
+                if (![mgr respondsToSelector:sel]) continue;
+                NSLog(@"[小杳知] followBrand 命中 %@.%@ userName=%@", svcClassName, selName, brandUserName);
+                ((void (*)(id, SEL, id))objc_msgSend)(mgr, sel, brandUserName);
+                return YES;
+            }
         }
 
+        NSLog(@"[小杳知] followBrand 未命中任何 selector，userName=%@", brandUserName);
         return NO;
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"followBrand"];
@@ -423,9 +461,13 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (void)fetchSelfAvatarWithCompletion:(void(^)(UIImage *avatar))completion {
-    dispatch_async(dispatch_get_main_queue(), ^{
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         UIImage *avatar = [self getSelfAvatar];
-        if (completion) completion(avatar);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(avatar);
+            });
+        }
     });
 }
 

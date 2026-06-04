@@ -63,6 +63,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
     [self buildMainUI];
     [self refreshAvatar];
     [self refreshFollowStatus];
+    [self scheduleAvatarRetryIfNeeded];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -557,6 +558,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [tv deselectRowAtIndexPath:ip animated:YES];
     if (self.currentPage == 0) {
         if (ip.row == 0) [self goToAccountInfo];
+        else if (ip.row == 2) [self showRewardSheet];
         else {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
@@ -978,7 +980,11 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }
 }
 
-
+- (void)showRewardSheet {
+    [self dismissAnimatedWithCompletion:^{
+        [YZRewardView openRewardPageFromViewController:nil fallback:nil];
+    }];
+}
 
 - (void)handleFollowTap {
     if (self.isFollowed) {
@@ -986,21 +992,22 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         return;
     }
 
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"关注公众号"
-                                                                   message:@"\n杳知爱吃米饭\n\n点击关注即可收到最新推送"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"关注" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
-        if ([YZWCServiceCenter followBrand:kGHUserName]) {
-            self.isFollowed = YES;
-            [self updateFollowUI];
-            [self showToast:@"已关注 杳知爱吃米饭"];
+    if ([YZWCServiceCenter followBrand:kGHUserName]) {
+        self.isFollowed = YES;
+        [self updateFollowUI];
+        [self showToast:@"关注请求已发送"];
+        return;
+    }
+
+    // 降级：打开公众号资料页让用户手动关注
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
+            [self showToast:@"已打开公众号主页，请点击关注"];
         } else {
             UIPasteboard.generalPasteboard.string = kGHUserName;
             [self showToast:@"请手动搜索关注 杳知爱吃米饭"];
         }
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
+    });
 }
 
 - (void)showToast:(NSString *)msg {
@@ -1030,8 +1037,28 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)presentInWindow:(UIWindow *)window {
     if (!window) return;
+
+    if (self.view.superview == window && self.isPresented) {
+        self.view.frame = window.bounds;
+        return;
+    }
+
+    BOOL shouldTransition = !self.isPresented;
+    if (self.view.superview && self.view.superview != window) {
+        [self.view removeFromSuperview];
+    }
+
     self.view.frame = window.bounds;
+    self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+    if (shouldTransition) {
+        [self beginAppearanceTransition:YES animated:NO];
+    }
     [window addSubview:self.view];
+    self.isPresented = YES;
+    if (shouldTransition) {
+        [self endAppearanceTransition];
+    }
 }
 
 - (void)presentFromTopViewController {
@@ -1056,13 +1083,20 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)dismissAnimated {
-    self.isPresented = NO;
+    BOOL shouldTransition = self.isPresented;
+    if (shouldTransition) {
+        [self beginAppearanceTransition:NO animated:NO];
+    }
     [self.view removeFromSuperview];
+    self.isPresented = NO;
+    if (shouldTransition) {
+        [self endAppearanceTransition];
+    }
+    [self restoreInteractivePopGesture];
 }
 
 - (void)dismissAnimatedWithCompletion:(void(^)(void))completion {
-    self.isPresented = NO;
-    [self.view removeFromSuperview];
+    [self dismissAnimated];
     if (completion) completion();
 }
 
@@ -1071,6 +1105,30 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (localAvatar && self.avatarView) {
         self.avatarView.image = localAvatar;
     }
+}
+
+- (void)scheduleAvatarRetryIfNeeded {
+    if (self.avatarView.image != nil) return;
+
+    NSArray<NSNumber *> *delays = @[@0.5, @1.5, @3.0];
+    for (NSNumber *d in delays) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (self.avatarView.image != nil) return;
+            [self refreshAvatar];
+        });
+    }
+
+    // 后台线程允许网络下载头像
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        UIImage *avatar = [YZWCServiceCenter getSelfAvatar];
+        if (avatar) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (self.avatarView.image == nil) {
+                    self.avatarView.image = avatar;
+                }
+            });
+        }
+    });
 }
 
 @end
