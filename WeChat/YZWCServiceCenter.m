@@ -230,33 +230,8 @@ static BOOL YZInvokeFollowSelector(id manager, NSString *serviceName, NSString *
     }
 }
 
-static NSString *YZBrandProfileURLString(NSString *brandUserName) {
-    if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
-        return [NSString stringWithFormat:@"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=%@&scene=124", kYZOfficialAccountBiz];
-    }
-    return nil;
-}
-
-/// 使用微信内部 MMWebViewController 在当前进程中打开 URL，避免 weixin:// scheme 跳转到官方微信
-static BOOL YZOpenInWeChatWebView(NSString *urlString) {
-    if (urlString.length == 0) return NO;
-
-    Class webVCClass = NSClassFromString(@"MMWebViewController");
-    if (!webVCClass) return NO;
-
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) return NO;
-
-    id webVC = nil;
-    SEL urlInitSel = NSSelectorFromString(@"initWithURL:");
-    if ([webVCClass instancesRespondToSelector:urlInitSel]) {
-        webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], urlInitSel, url);
-    }
-    if (!webVC) {
-        webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
-    }
-    if (!webVC) return NO;
-
+/// 获取微信主窗口的根导航控制器（穿透 modal sheet）
+static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if ([scene isKindOfClass:UIWindowScene.class] && scene.activationState == UISceneActivationStateForegroundActive) {
@@ -268,11 +243,59 @@ static BOOL YZOpenInWeChatWebView(NSString *urlString) {
         }
     }
     UIViewController *root = keyWindow.rootViewController;
-    while (root.presentedViewController) root = root.presentedViewController;
-    UINavigationController *nav = root.navigationController;
-    if (!nav && [root isKindOfClass:UINavigationController.class]) {
-        nav = (UINavigationController *)root;
+    if ([root isKindOfClass:UINavigationController.class]) {
+        return (UINavigationController *)root;
     }
+    if ([root isKindOfClass:UITabBarController.class]) {
+        UIViewController *selected = ((UITabBarController *)root).selectedViewController;
+        if ([selected isKindOfClass:UINavigationController.class]) {
+            return (UINavigationController *)selected;
+        }
+    }
+    return root.navigationController;
+}
+
+static NSString *YZBrandProfileURLString(NSString *brandUserName) {
+    if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
+        return [NSString stringWithFormat:@"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=%@&scene=124", kYZOfficialAccountBiz];
+    }
+    return nil;
+}
+
+/// 使用微信内部 WebView 在当前进程中打开 URL，避免 weixin:// scheme 跳转到官方微信
+static BOOL YZOpenInWeChatWebView(NSString *urlString) {
+    if (urlString.length == 0) return NO;
+
+    // 尝试多种微信内部 WebView 类名
+    NSArray<NSString *> *classNames = @[@"MMWebViewController", @"WCWebViewController", @"MMWebViewUIViewController"];
+    Class webVCClass = nil;
+    for (NSString *name in classNames) {
+        webVCClass = NSClassFromString(name);
+        if (webVCClass) break;
+    }
+    if (!webVCClass) return NO;
+
+    NSURL *url = [NSURL URLWithString:urlString];
+    if (!url) return NO;
+
+    id webVC = nil;
+    // 尝试多种初始化方式
+    SEL initSel = NSSelectorFromString(@"initWithURL:");
+    if ([webVCClass instancesRespondToSelector:initSel]) {
+        webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], initSel, url);
+    }
+    if (!webVC) {
+        initSel = NSSelectorFromString(@"initWithUrl:");
+        if ([webVCClass instancesRespondToSelector:initSel]) {
+            webVC = ((id (*)(id, SEL, NSURL *))objc_msgSend)([webVCClass alloc], initSel, url);
+        }
+    }
+    if (!webVC) {
+        webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
+    }
+    if (!webVC) return NO;
+
+    UINavigationController *nav = YZWeChatRootNavController();
     if (!nav) return NO;
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -578,8 +601,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
                             didSetContact = YES;
                         }
                     }
-                    if (didSetContact && targetVC.navigationController) {
-                        [targetVC.navigationController pushViewController:infoVC animated:YES];
+                    UINavigationController *pushNav = targetVC.navigationController ?: YZWeChatRootNavController();
+                    if (didSetContact && pushNav) {
+                        [pushNav pushViewController:infoVC animated:YES];
                         return YES;
                     }
                 }
