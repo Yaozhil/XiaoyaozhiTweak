@@ -268,40 +268,55 @@ static NSString *YZWeChatUserAgent(void) {
     static NSString *sCachedUA = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // 优先从 NSUserDefaults 读取微信自定义 UA
+        // 1. 优先从 NSUserDefaults 读取微信注册的自定义 UA
         NSString *ua = [[NSUserDefaults standardUserDefaults] objectForKey:@"UserAgent"];
         if ([ua containsString:@"MicroMessenger"]) {
             sCachedUA = ua;
             return;
         }
-        // 在确保主线程的前提下获取 WKWebView 默认 UA
-        if (NSThread.isMainThread) {
+
+        // 2. 获取 WKWebView 默认 UA（含正确的设备/WebKit 信息）
+        NSString *baseUA = nil;
+        void (^fetchBlock)(void) = ^{
             WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectZero];
             __block BOOL done = NO;
             [wv evaluateJavaScript:@"navigator.userAgent" completionHandler:^(id result, __unused NSError *err) {
-                if ([result isKindOfClass:NSString.class]) {
-                    sCachedUA = [NSString stringWithFormat:@"%@ MicroMessenger", result];
-                }
+                if ([result isKindOfClass:NSString.class]) baseUA = result;
                 done = YES;
             }];
             while (!done) {
                 [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
             }
+        };
+
+        if (NSThread.isMainThread) {
+            fetchBlock();
         } else {
             dispatch_semaphore_t sem = dispatch_semaphore_create(0);
             dispatch_async(dispatch_get_main_queue(), ^{
-                WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectZero];
-                [wv evaluateJavaScript:@"navigator.userAgent" completionHandler:^(id result, __unused NSError *err) {
-                    if ([result isKindOfClass:NSString.class]) {
-                        sCachedUA = [NSString stringWithFormat:@"%@ MicroMessenger", result];
-                    }
-                    dispatch_semaphore_signal(sem);
-                }];
+                fetchBlock();
+                dispatch_semaphore_signal(sem);
             });
             dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 3LL * NSEC_PER_SEC));
         }
+
+        if (!baseUA) { sCachedUA = @""; return; }
+
+        // 3. 去掉 Safari 后缀（" Version/18.0 Safari/604.1"），替换为 MicroMessenger 标识
+        NSRange versionRange = [baseUA rangeOfString:@" Version/"];
+        if (versionRange.location != NSNotFound) {
+            baseUA = [baseUA substringToIndex:versionRange.location];
+        }
+
+        NSDictionary *info = NSBundle.mainBundle.infoDictionary;
+        NSString *ver = info[@"CFBundleShortVersionString"] ?: @"8.0.0";
+        NSString *build = info[@"CFBundleVersion"] ?: @"0";
+        NSString *lang = [[NSLocale preferredLanguages] firstObject] ?: @"zh_CN";
+
+        sCachedUA = [NSString stringWithFormat:@"%@ MicroMessenger/%@(%@) NetType/WIFI Language/%@",
+                     baseUA, ver, build, lang];
     });
-    return sCachedUA;
+    return sCachedUA.length > 0 ? sCachedUA : nil;
 }
 
 /// 使用 WKWebView + 微信 UA/Cookie 在当前进程中打开 URL
