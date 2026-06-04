@@ -29,6 +29,8 @@
 - 已按用户要求暂停并移除“小游戏”功能：删除小游戏 hook 源码、编译项、常用功能菜单入口和开关逻辑，当前集中处理公众号关注链路。
 - 已修正公众号关注状态误判：`isBrandFollowing:` 优先调用 `CContactMgr isInContactList:`/`isInContact:`/`isMyContact:`；若微信版本没有这些 selector，才读取 contact 的明确列表状态字段；不再因 contact 对象存在或用户名为空而显示“已关注”。
 - 用户补充的大佬插件录屏/截图显示 mp 主页可在微信原生 WebView 内打开，UA 含 `MicroMessenger/8.0.74`，页面报“操作频繁，请稍后再试”更像微信服务端频控；当前已新增 `MMWebViewController`/`WCWebViewController` 内部 WebView 兜底打开公众号主页 URL。
+- 用户补充正常微信号打开大佬公众号的调试截图：Network 里 `action=urlcheck` 携带 `__biz`、`scene=124`、`url_list`，响应 `base_resp.ret=0` 且 `is_ok=true`，证明微信内部 WebView 会走 A8Key/urlcheck，是当前主页兜底的正确通道。
+- 已收紧底部胶囊展示流程：若从 `YZGlassSheetController` 插件弹层触发，先关闭弹层，再 push 微信原生资料页或内部 WebView，避免页面被插件弹层挡住导致看起来“没跳转”。
 - 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 
 ## 下一步

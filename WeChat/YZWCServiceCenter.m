@@ -333,6 +333,12 @@ static UINavigationController *YZPreferredPushNavigationController(UIViewControl
     return nav ?: YZWeChatRootNavController();
 }
 
+static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController) {
+    if (!viewController) return NO;
+    NSString *className = NSStringFromClass(viewController.class);
+    return [className containsString:@"YZGlass"] || viewController.presentingViewController != nil;
+}
+
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
 static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
@@ -630,19 +636,11 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (BOOL)presentController:(UIViewController *)controller fromViewController:(UIViewController *)viewController {
     if (!controller) return NO;
 
-    UINavigationController *pushNav = YZPreferredPushNavigationController(viewController);
-    if (pushNav) {
-        [pushNav pushViewController:controller animated:YES];
-        return YES;
-    }
-
     UIViewController *presenter = viewController ?: [self topMostViewController];
-    if (!presenter) return NO;
-
-    if (presenter.presentingViewController) {
+    if (YZShouldDismissBeforePresenting(presenter)) {
         [presenter dismissViewControllerAnimated:YES completion:^{
             UIViewController *topVC = [self topMostViewController];
-            UINavigationController *nav = YZNavigationControllerFromViewController(topVC);
+            UINavigationController *nav = YZPreferredPushNavigationController(topVC);
             if (nav) {
                 [nav pushViewController:controller animated:YES];
             } else if (topVC) {
@@ -651,6 +649,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }];
         return YES;
     }
+
+    UINavigationController *pushNav = YZPreferredPushNavigationController(viewController);
+    if (pushNav) {
+        [pushNav pushViewController:controller animated:YES];
+        return YES;
+    }
+
+    if (!presenter) return NO;
 
     UINavigationController *nav = YZNavigationControllerFromViewController(presenter);
     if (nav) {
@@ -727,8 +733,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
 
-    UINavigationController *pushNav = YZPreferredPushNavigationController(viewController);
-
     // ── 第一优先：微信原生 CContactInfoViewController ──
     id contactMgr = [self getContactManager];
     if (contactMgr) {
@@ -783,32 +787,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             if (infoVCClass) {
                 id infoVC = YZCreateBrandProfileController(infoVCClass, contact);
                 if (infoVC) {
-                    if (pushNav) {
-                        [pushNav pushViewController:infoVC animated:YES];
-                        return YES;
-                    }
-
-                    UIViewController *presenter = viewController ?: [self topMostViewController];
-                    if (presenter) {
-                        if (presenter.presentingViewController) {
-                            [presenter dismissViewControllerAnimated:YES completion:^{
-                                UIViewController *topVC = [self topMostViewController];
-                                UINavigationController *nav = YZNavigationControllerFromViewController(topVC);
-                                if (nav) {
-                                    [nav pushViewController:infoVC animated:YES];
-                                } else if (topVC) {
-                                    [topVC presentViewController:infoVC animated:YES completion:nil];
-                                }
-                            }];
-                            return YES;
-                        }
-
-                        UINavigationController *nav = YZNavigationControllerFromViewController(presenter);
-                        if (nav) {
-                            [nav pushViewController:infoVC animated:YES];
-                        } else {
-                            [presenter presentViewController:infoVC animated:YES completion:nil];
-                        }
+                    if ([infoVC isKindOfClass:UIViewController.class] &&
+                        [self presentController:(UIViewController *)infoVC fromViewController:viewController]) {
                         return YES;
                     }
 
