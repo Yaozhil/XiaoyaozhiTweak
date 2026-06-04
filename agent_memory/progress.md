@@ -5,7 +5,7 @@
 - 点击“投喂一下”只有震动反馈，无弹窗、无跳转、无 toast、无黑屏。
 - 首次安装登录账号后，或已登录状态下用新签名包覆盖安装后，首次打开显示倒计时弹窗；倒计时结束后点击“已知晓”关闭弹窗并自动关注公众号，关注失败只提示失败。
 - 插件底部胶囊点击“关注公众号”时直接自动关注；如无法确认关注成功，再跳转公众号资料页让用户手动关注，兜底失败则复制公众号 ID 并提示搜索。
-- 版本号按用户规则递增，跳过 `1.1.0` 和 `1.1.4`；当前同步到 `1.1.5`，后续依次 `1.1.6`、`1.1.7`。
+- 版本号按用户规则递增，跳过 `1.1.0` 和 `1.1.4`；当前同步到 `1.1.6`，后续依次 `1.1.7`、`1.1.8`。
 
 ## 范围边界
 
@@ -21,8 +21,8 @@
 - 已增强自动关注调用：同时兼容传公众号 ID 和传 `CContact/MMContact` 对象的 selector 形态；单个 selector 调用异常时继续尝试后续候选。
 - 已增强底部胶囊行为：关注请求发出后延迟复查状态，仍未确认关注时再打开公众号资料页。
 - 已修复设备标识：补齐 iPhone 17 系列 `iPhone18,*` 映射，未知新 iPhone/iPad/iPod 型号改为显示泛称加硬件标识。
-- 已根据用户提供的成熟插件链接增强底部关注失败兜底：优先打开 `mp.weixin.qq.com/mp/profile_ext?...__biz=MzYzOTc5MzgwNw==&scene=124`，再回退 `weixin://contacts/profile/gh_...`。
-- 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.5`。
+- 已根据用户提供的成熟插件链接增强底部关注失败兜底：通过 `weixin://dl/businessWebview/link/?appid=&url=...` 在微信内打开公众号主页，再回退 `weixin://contacts/profile/gh_...`。
+- 已同步 `control`、`README.md`、`Core/YZConfigManager.m`、`Core/YZPluginLifecycle.m`、`Guard/YZPrivacyGuard.m`、`preview.html` 到版本 `1.1.6`。
 
 ## 下一步
 

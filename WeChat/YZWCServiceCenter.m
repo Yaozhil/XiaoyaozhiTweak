@@ -10,7 +10,7 @@ static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
-static NSString *const kYZOfficialAccountBiz = @"MzYzOTc5MzgwNw==";
+static NSString *const kYZOfficialAccountBiz = @"Mzk2NDE2MjU5Ng==";
 
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
@@ -242,6 +242,24 @@ static BOOL YZOpenURLString(NSString *urlString) {
     return YES;
 }
 
+static NSString *YZURLEncodedQueryValue(NSString *value) {
+    if (value.length == 0) return @"";
+
+    NSMutableCharacterSet *allowed = [NSCharacterSet URLQueryAllowedCharacterSet].mutableCopy;
+    [allowed removeCharactersInString:@"&=+?"];
+    return [value stringByAddingPercentEncodingWithAllowedCharacters:allowed] ?: @"";
+}
+
+static NSString *YZWeChatBusinessWebViewURLString(NSString *webURLString) {
+    NSString *encodedURL = YZURLEncodedQueryValue(webURLString);
+    if (encodedURL.length == 0) return nil;
+    return [NSString stringWithFormat:@"weixin://dl/businessWebview/link/?appid=&url=%@", encodedURL];
+}
+
+static BOOL YZOpenWeChatBusinessWebView(NSString *webURLString) {
+    return YZOpenURLString(YZWeChatBusinessWebViewURLString(webURLString));
+}
+
 static NSString *YZBrandProfileURLString(NSString *brandUserName) {
     if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
         return [NSString stringWithFormat:@"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=%@&scene=124", kYZOfficialAccountBiz];
@@ -256,7 +274,7 @@ static NSString *YZBrandContactProfileURLString(NSString *brandUserName) {
 
 static BOOL YZOpenBrandProfileURLFallback(NSString *brandUserName) {
     NSString *profileURL = YZBrandProfileURLString(brandUserName);
-    if (profileURL.length > 0 && YZOpenURLString(profileURL)) return YES;
+    if (profileURL.length > 0 && YZOpenWeChatBusinessWebView(profileURL)) return YES;
     return YZOpenURLString(YZBrandContactProfileURLString(brandUserName));
 }
 

@@ -822,11 +822,9 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)openManualFollowFallback {
     if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
-        [self showToast:@"已打开公众号主页，请点击关注"];
-    } else {
-        UIPasteboard.generalPasteboard.string = kGHUserName;
-        [self showToast:@"请手动搜索关注 杳知爱吃米饭"];
+        return;
     }
+    UIPasteboard.generalPasteboard.string = kGHUserName;
 }
 
 - (void)handleFollowTap {
@@ -835,6 +833,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         return;
     }
 
+    // 优先自动关注
     if ([YZWCServiceCenter followBrand:kGHUserName]) {
         [self showToast:@"关注请求已发送"];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -846,10 +845,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         return;
     }
 
-    // 降级：打开公众号资料页让用户手动关注
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self openManualFollowFallback];
-    });
+    // 自动关注失败，打开公众号主页让用户手动关注
+    [self openManualFollowFallback];
 }
 
 - (void)showToast:(NSString *)msg {
