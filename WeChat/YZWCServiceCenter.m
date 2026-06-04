@@ -276,7 +276,7 @@ static NSString *YZWeChatUserAgent(void) {
         }
 
         // 2. 获取 WKWebView 默认 UA（含正确的设备/WebKit 信息）
-        NSString *baseUA = nil;
+        __block NSString *baseUA = nil;
         void (^fetchBlock)(void) = ^{
             WKWebView *wv = [[WKWebView alloc] initWithFrame:CGRectZero];
             __block BOOL done = NO;
