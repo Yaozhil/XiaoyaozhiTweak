@@ -206,248 +206,6 @@ static NSInteger YZContactFollowState(id contact, NSString *brandUserName) {
     return -1;
 }
 
-static id YZCreateBrandContact(NSString *brandUserName) {
-    if (brandUserName.length == 0) return nil;
-
-    Class contactClass = NSClassFromString(@"CContact");
-    if (!contactClass) contactClass = NSClassFromString(@"MMContact");
-    if (!contactClass) return nil;
-
-    id contact = nil;
-    SEL initWithUserName = NSSelectorFromString(@"initWithUserName:");
-    @try {
-        if ([contactClass instancesRespondToSelector:initWithUserName]) {
-            contact = ((id (*)(id, SEL, id))objc_msgSend)([contactClass alloc], initWithUserName, brandUserName);
-        } else {
-            contact = ((id (*)(id, SEL))objc_msgSend)([contactClass alloc], @selector(init));
-        }
-    } @catch (__unused NSException *exception) {
-        contact = nil;
-    }
-    if (!contact) return nil;
-
-    NSArray<NSString *> *setters = @[@"setM_nsUsrName:", @"setM_nsUserName:", @"setUserName:", @"setUsrName:"];
-    for (NSString *selectorName in setters) {
-        SEL selector = NSSelectorFromString(selectorName);
-        if (![contact respondsToSelector:selector]) continue;
-        @try {
-            ((void (*)(id, SEL, id))objc_msgSend)(contact, selector, brandUserName);
-            return contact;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-
-    @try {
-        [contact setValue:brandUserName forKey:@"m_nsUsrName"];
-    } @catch (__unused NSException *exception) {
-    }
-    return contact;
-}
-
-static BOOL YZMethodReturnsBool(id target, SEL selector) {
-    Method method = class_getInstanceMethod([target class], selector);
-    if (!method) return NO;
-
-    char returnType[16] = {0};
-    method_getReturnType(method, returnType, sizeof(returnType));
-    return returnType[0] == 'B' || returnType[0] == 'c' || returnType[0] == 'C';
-}
-
-static BOOL YZInvokeFollowSelector(id manager, NSString *serviceName, NSString *selectorName, id contactOrUserName, NSInteger scene, BOOL includeEnterType) {
-    if (!manager || selectorName.length == 0 || !contactOrUserName) return NO;
-
-    SEL selector = NSSelectorFromString(selectorName);
-    if (![manager respondsToSelector:selector]) return NO;
-
-    @try {
-        NSLog(@"[小杳知] followBrand 尝试 %@.%@ arg=%@ scene=%ld", serviceName, selectorName, NSStringFromClass([contactOrUserName class]), (long)scene);
-        BOOL returnsBool = YZMethodReturnsBool(manager, selector);
-        if (includeEnterType) {
-            if (returnsBool) {
-                return ((BOOL (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene, 1);
-            }
-            ((void (*)(id, SEL, id, NSInteger, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene, 1);
-        } else if ([selectorName hasSuffix:@":scene:"] || [selectorName containsString:@":scene:"]) {
-            if (returnsBool) {
-                return ((BOOL (*)(id, SEL, id, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene);
-            }
-            ((void (*)(id, SEL, id, NSInteger))objc_msgSend)(manager, selector, contactOrUserName, scene);
-        } else {
-            if (returnsBool) {
-                return ((BOOL (*)(id, SEL, id))objc_msgSend)(manager, selector, contactOrUserName);
-            }
-            ((void (*)(id, SEL, id))objc_msgSend)(manager, selector, contactOrUserName);
-        }
-        return YES;
-    } @catch (NSException *exception) {
-        NSLog(@"[小杳知] followBrand %@.%@ 调用失败: %@", serviceName, selectorName, exception.reason);
-        return NO;
-    }
-}
-
-static void YZSetObjectIfPossible(id target, NSArray<NSString *> *selectorNames, NSArray<NSString *> *keys, id value) {
-    if (!target || !value) return;
-
-    for (NSString *selectorName in selectorNames) {
-        SEL selector = NSSelectorFromString(selectorName);
-        if (![target respondsToSelector:selector]) continue;
-        @try {
-            ((void (*)(id, SEL, id))objc_msgSend)(target, selector, value);
-            return;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-
-    for (NSString *key in keys) {
-        @try {
-            [target setValue:value forKey:key];
-            return;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-}
-
-static void YZSetIntegerIfPossible(id target, NSArray<NSString *> *selectorNames, NSArray<NSString *> *keys, NSInteger value) {
-    if (!target) return;
-
-    for (NSString *selectorName in selectorNames) {
-        SEL selector = NSSelectorFromString(selectorName);
-        if (![target respondsToSelector:selector]) continue;
-        @try {
-            ((void (*)(id, SEL, NSInteger))objc_msgSend)(target, selector, value);
-            return;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-
-    NSNumber *boxedValue = @(value);
-    for (NSString *key in keys) {
-        @try {
-            [target setValue:boxedValue forKey:key];
-            return;
-        } @catch (__unused NSException *exception) {
-        }
-    }
-}
-
-static id YZCreateBrandDirectlyAddContactContext(NSString *brandUserName, id contact, NSInteger scene) {
-    Class contextClass = NSClassFromString(@"BrandDirectlyAddContactContext");
-    if (!contextClass || brandUserName.length == 0) return nil;
-
-    id context = nil;
-    @try {
-        SEL initWithUserNameScene = NSSelectorFromString(@"initWithUserName:scene:");
-        SEL initWithBrandUserNameScene = NSSelectorFromString(@"initWithBrandUserName:scene:");
-        SEL initWithContactScene = NSSelectorFromString(@"initWithContact:scene:");
-        SEL initWithUserName = NSSelectorFromString(@"initWithUserName:");
-        SEL initWithContact = NSSelectorFromString(@"initWithContact:");
-
-        if ([contextClass instancesRespondToSelector:initWithUserNameScene]) {
-            context = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([contextClass alloc], initWithUserNameScene, brandUserName, scene);
-        } else if ([contextClass instancesRespondToSelector:initWithBrandUserNameScene]) {
-            context = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([contextClass alloc], initWithBrandUserNameScene, brandUserName, scene);
-        } else if (contact && [contextClass instancesRespondToSelector:initWithContactScene]) {
-            context = ((id (*)(id, SEL, id, NSInteger))objc_msgSend)([contextClass alloc], initWithContactScene, contact, scene);
-        } else if ([contextClass instancesRespondToSelector:initWithUserName]) {
-            context = ((id (*)(id, SEL, id))objc_msgSend)([contextClass alloc], initWithUserName, brandUserName);
-        } else if (contact && [contextClass instancesRespondToSelector:initWithContact]) {
-            context = ((id (*)(id, SEL, id))objc_msgSend)([contextClass alloc], initWithContact, contact);
-        } else {
-            context = ((id (*)(id, SEL))objc_msgSend)([contextClass alloc], @selector(init));
-        }
-    } @catch (__unused NSException *exception) {
-        context = nil;
-    }
-    if (!context) return nil;
-
-    YZSetObjectIfPossible(context,
-                          @[@"setUserName:", @"setUsername:", @"setBrandUserName:", @"setM_nsUsrName:", @"setM_nsUserName:"],
-                          @[@"userName", @"username", @"brandUserName", @"m_nsUsrName", @"m_nsUserName"],
-                          brandUserName);
-    if (contact) {
-        YZSetObjectIfPossible(context,
-                              @[@"setContact:", @"setBrandContact:", @"setM_contact:"],
-                              @[@"contact", @"brandContact", @"m_contact"],
-                              contact);
-    }
-    YZSetIntegerIfPossible(context,
-                           @[@"setScene:", @"setFromScene:", @"setUIFromScene:", @"setEnterScene:", @"setM_uiFromScene:"],
-                           @[@"scene", @"fromScene", @"uiFromScene", @"enterScene", @"m_uiFromScene"],
-                           scene);
-    return context;
-}
-
-static NSArray *YZBrandDirectlyLogicCandidates(void) {
-    NSMutableArray *candidates = [NSMutableArray array];
-    id service = [YZWCRuntime getService:@"BrandDirectlyOperateContactLogic"];
-    if (service) [candidates addObject:service];
-
-    Class logicClass = NSClassFromString(@"BrandDirectlyOperateContactLogic");
-    if (!logicClass) return candidates;
-
-    for (NSString *selectorName in @[@"sharedInstance", @"defaultLogic", @"defaultCenter", @"logic"]) {
-        id logic = YZCallNoArgSelector(logicClass, selectorName);
-        if (logic && ![candidates containsObject:logic]) [candidates addObject:logic];
-    }
-
-    @try {
-        id logic = ((id (*)(id, SEL))objc_msgSend)([logicClass alloc], @selector(init));
-        if (logic && ![candidates containsObject:logic]) [candidates addObject:logic];
-    } @catch (__unused NSException *exception) {
-    }
-    return candidates;
-}
-
-static BOOL YZInvokeBrandDirectlyAdd(id logic, id contactOrUserName, id context) {
-    if (!logic || !contactOrUserName || !context) return NO;
-
-    SEL selector = NSSelectorFromString(@"tryAddBrandContact:context:");
-    if (![logic respondsToSelector:selector]) return NO;
-
-    @try {
-        Method method = class_getInstanceMethod([logic class], selector);
-        char returnType[16] = {0};
-        if (method) method_getReturnType(method, returnType, sizeof(returnType));
-
-        NSLog(@"[小杳知] followBrand 尝试 BrandDirectlyOperateContactLogic.tryAddBrandContact:context: arg=%@ context=%@",
-              NSStringFromClass([contactOrUserName class]),
-              NSStringFromClass([context class]));
-        if (returnType[0] == '@') {
-            id value = ((id (*)(id, SEL, id, id))objc_msgSend)(logic, selector, contactOrUserName, context);
-            if ([value respondsToSelector:@selector(boolValue)]) return [value boolValue];
-            return value != nil;
-        }
-        if (strchr("BcCsSiIlLqQ", returnType[0])) {
-            NSInteger value = ((NSInteger (*)(id, SEL, id, id))objc_msgSend)(logic, selector, contactOrUserName, context);
-            return value != 0;
-        }
-        ((void (*)(id, SEL, id, id))objc_msgSend)(logic, selector, contactOrUserName, context);
-        return YES;
-    } @catch (NSException *exception) {
-        NSLog(@"[小杳知] followBrand BrandDirectlyOperateContactLogic 调用失败: %@", exception.reason);
-        return NO;
-    }
-}
-
-static BOOL YZTryBrandDirectlyOperateContactLogic(NSString *brandUserName, id contact, NSInteger scene) {
-    NSArray *logics = YZBrandDirectlyLogicCandidates();
-    if (logics.count == 0) return NO;
-
-    id context = YZCreateBrandDirectlyAddContactContext(brandUserName, contact, scene);
-    if (!context) return NO;
-
-    NSMutableArray *arguments = [NSMutableArray array];
-    if (contact) [arguments addObject:contact];
-    [arguments addObject:brandUserName];
-
-    for (id logic in logics) {
-        for (id argument in arguments) {
-            if (YZInvokeBrandDirectlyAdd(logic, argument, context)) return YES;
-        }
-    }
-    return NO;
-}
-
 static UINavigationController *YZWeChatRootNavController(void);
 
 static UINavigationController *YZNavigationControllerFromViewController(UIViewController *viewController) {
@@ -469,117 +227,6 @@ static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController) {
     if (!viewController) return NO;
     NSString *className = NSStringFromClass(viewController.class);
     return [className containsString:@"YZGlass"] || viewController.presentingViewController != nil;
-}
-
-static void YZRunAfterPluginOverlayDismissed(UIViewController *viewController, void (^block)(void)) {
-    if (!block) return;
-
-    void (^delayedBlock)(void) = ^{
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), block);
-    };
-
-    if (!viewController) {
-        delayedBlock();
-        return;
-    }
-
-    SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
-    if ([viewController respondsToSelector:customDismissSel]) {
-        ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, delayedBlock);
-        return;
-    }
-
-    if (viewController.presentingViewController) {
-        [viewController dismissViewControllerAnimated:NO completion:delayedBlock];
-        return;
-    }
-
-    delayedBlock();
-}
-
-static id YZCreateWeChatWebProfileController(NSURL *profileURL) {
-    if (!profileURL) return nil;
-
-    Class webVCClass = NSClassFromString(@"MMWebViewController");
-    if (!webVCClass) webVCClass = NSClassFromString(@"WCWebViewController");
-    if (!webVCClass) webVCClass = NSClassFromString(@"MMWebViewController_Navigation");
-    if (!webVCClass) return nil;
-
-    NSString *urlString = profileURL.absoluteString;
-    NSArray *urlCandidates = @[urlString, profileURL];
-    @try {
-        SEL init3 = NSSelectorFromString(@"initWithURL:presentModal:extraInfo:");
-        if ([webVCClass instancesRespondToSelector:init3]) {
-            for (id url in urlCandidates) {
-                id webVC = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)([webVCClass alloc], init3, url, NO, nil);
-                if ([webVC isKindOfClass:UIViewController.class]) return webVC;
-            }
-        }
-
-        SEL init2 = NSSelectorFromString(@"initWithURL:presentModal:");
-        if ([webVCClass instancesRespondToSelector:init2]) {
-            for (id url in urlCandidates) {
-                id webVC = ((id (*)(id, SEL, id, BOOL))objc_msgSend)([webVCClass alloc], init2, url, NO);
-                if ([webVC isKindOfClass:UIViewController.class]) return webVC;
-            }
-        }
-
-        SEL initURL = NSSelectorFromString(@"initWithURL:");
-        if ([webVCClass instancesRespondToSelector:initURL]) {
-            for (id url in urlCandidates) {
-                id webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURL, url);
-                if ([webVC isKindOfClass:UIViewController.class]) return webVC;
-            }
-        }
-
-        SEL initURLString = NSSelectorFromString(@"initWithURLString:");
-        if ([webVCClass instancesRespondToSelector:initURLString]) {
-            id webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURLString, urlString);
-            if ([webVC isKindOfClass:UIViewController.class]) return webVC;
-        }
-
-        id webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
-        if (![webVC isKindOfClass:UIViewController.class]) return nil;
-
-        for (NSString *selectorName in @[@"setURL:", @"setUrl:", @"setM_nsURL:", @"setM_nsUrl:", @"setRawUrl:", @"setRawURL:"]) {
-            SEL selector = NSSelectorFromString(selectorName);
-            if (![webVC respondsToSelector:selector]) continue;
-            ((void (*)(id, SEL, id))objc_msgSend)(webVC, selector, urlString);
-            return webVC;
-        }
-    } @catch (NSException *exception) {
-        NSLog(@"[小杳知] openBrandProfile 创建微信 WebView 失败: %@", exception.reason);
-    }
-
-    return nil;
-}
-
-static BOOL YZPresentWeChatWebProfileController(UIViewController *webVC) {
-    if (!webVC) return NO;
-
-    UINavigationController *nav = YZWeChatRootNavController();
-    UIWindow *keyWindow = nil;
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
-        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-            if (w.isKeyWindow) { keyWindow = w; break; }
-        }
-        if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
-        break;
-    }
-    UIViewController *topVC = keyWindow.rootViewController;
-    while (topVC.presentedViewController) topVC = topVC.presentedViewController;
-
-    if (nav) {
-        [nav pushViewController:webVC animated:YES];
-        return YES;
-    }
-    if (topVC) {
-        UINavigationController *wrapper = [[UINavigationController alloc] initWithRootViewController:webVC];
-        [topVC presentViewController:wrapper animated:YES completion:nil];
-        return YES;
-    }
-    return NO;
 }
 
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
@@ -768,6 +415,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)followBrand:(NSString *)brandUserName {
+    NSLog(@"[Xiaoyaozhi] followBrand disabled to avoid unstable private selectors, userName=%@", brandUserName);
+    return NO;
+#if 0
     if (brandUserName.length == 0) return NO;
 
     @try {
@@ -779,9 +429,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         id syntheticContact = existingContact ?: YZCreateBrandContact(brandUserName);
         NSArray *argumentCandidates = syntheticContact ? @[brandUserName, syntheticContact] : @[brandUserName];
         NSInteger scene = 3;
-
-        // WCEhance/WCPulse 等插件二进制里都出现这条路径，优先尝试微信品牌号专用关注逻辑。
-        if (YZTryBrandDirectlyOperateContactLogic(brandUserName, syntheticContact, scene)) return YES;
 
         // selector 候选，按参数个数分三组
         NSArray<NSString *> *sel2Args = @[
@@ -846,6 +493,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         [YZCrashGuard logCrashContext:@"followBrand"];
         return NO;
     }
+#endif
 }
 
 + (id)searchBrandContact:(NSString *)brandUserName viaContactMgr:(id)contactMgr {
@@ -916,15 +564,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
-    NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
-    UIViewController *webVC = YZCreateWeChatWebProfileController(url);
-    if (!webVC) return NO;
-
-    YZRunAfterPluginOverlayDismissed(viewController, ^{
-        BOOL shown = YZPresentWeChatWebProfileController(webVC);
-        NSLog(@"[小杳知] openBrandProfile 使用微信原生 WebView 打开 %@，shown=%@", url.absoluteString, shown ? @"YES" : @"NO");
-    });
-    return YES;
+    // 8.0.74 真机反馈直接构造 MMWebViewController/WCWebViewController 会点击即闪退。
+    // 这条路先禁用，后续只在拿到稳定业务入口后恢复。
+    return NO;
 }
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {

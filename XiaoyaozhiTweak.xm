@@ -319,12 +319,6 @@ static BOOL YZPerformFollow(void) {
         return YES;
     }
 
-    if ([YZWCServiceCenter followBrand:userName]) {
-        NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
-        YZShowToast([NSString stringWithFormat:@"关注请求已发送，请验证是否关注 %@", name]);
-        return YES;
-    }
-
     return NO;
 }
 
