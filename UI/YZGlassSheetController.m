@@ -919,6 +919,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     if (shouldTransition) {
         [self beginAppearanceTransition:NO animated:NO];
     }
+    self.view.userInteractionEnabled = NO;
+    [self.view.layer removeAllAnimations];
     [self.view removeFromSuperview];
     self.isPresented = NO;
     if (shouldTransition) {

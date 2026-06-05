@@ -471,80 +471,6 @@ static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController) {
     return [className containsString:@"YZGlass"] || viewController.presentingViewController != nil;
 }
 
-static BOOL YZAppDelegateCanHandleProfileURL(void) {
-    id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
-    if (!delegate) return NO;
-
-    return [delegate respondsToSelector:NSSelectorFromString(@"application:continueUserActivity:restorationHandler:")] ||
-           [delegate respondsToSelector:@selector(application:openURL:options:)] ||
-           [delegate respondsToSelector:@selector(application:openURL:sourceApplication:annotation:)] ||
-           [delegate respondsToSelector:@selector(application:handleOpenURL:)];
-}
-
-static BOOL YZOpenURLThroughWeChatAppDelegate(NSURL *url) {
-    if (!url) return NO;
-
-    UIApplication *application = UIApplication.sharedApplication;
-    id<UIApplicationDelegate> delegate = application.delegate;
-    if (!delegate) return NO;
-
-    @try {
-        SEL continueSel = NSSelectorFromString(@"application:continueUserActivity:restorationHandler:");
-        if ([delegate respondsToSelector:continueSel]) {
-            NSUserActivity *activity = [[NSUserActivity alloc] initWithActivityType:NSUserActivityTypeBrowsingWeb];
-            activity.webpageURL = url;
-            BOOL handled = ((BOOL (*)(id, SEL, UIApplication *, NSUserActivity *, void (^)(NSArray *)))objc_msgSend)(
-                delegate,
-                continueSel,
-                application,
-                activity,
-                ^(__unused NSArray *restorableObjects) {}
-            );
-            if (handled) return YES;
-        }
-
-        SEL openOptionsSel = @selector(application:openURL:options:);
-        if ([delegate respondsToSelector:openOptionsSel]) {
-            BOOL handled = ((BOOL (*)(id, SEL, UIApplication *, NSURL *, NSDictionary *))objc_msgSend)(
-                delegate,
-                openOptionsSel,
-                application,
-                url,
-                @{}
-            );
-            if (handled) return YES;
-        }
-
-        SEL openSourceSel = @selector(application:openURL:sourceApplication:annotation:);
-        if ([delegate respondsToSelector:openSourceSel]) {
-            BOOL handled = ((BOOL (*)(id, SEL, UIApplication *, NSURL *, NSString *, id))objc_msgSend)(
-                delegate,
-                openSourceSel,
-                application,
-                url,
-                NSBundle.mainBundle.bundleIdentifier,
-                nil
-            );
-            if (handled) return YES;
-        }
-
-        SEL handleSel = @selector(application:handleOpenURL:);
-        if ([delegate respondsToSelector:handleSel]) {
-            BOOL handled = ((BOOL (*)(id, SEL, UIApplication *, NSURL *))objc_msgSend)(
-                delegate,
-                handleSel,
-                application,
-                url
-            );
-            if (handled) return YES;
-        }
-    } @catch (NSException *exception) {
-        [YZCrashGuard logCrashContext:@"openURLThroughWeChatAppDelegate"];
-    }
-
-    return NO;
-}
-
 static void YZRunAfterPluginOverlayDismissed(UIViewController *viewController, void (^block)(void)) {
     if (!block) return;
 
@@ -569,6 +495,91 @@ static void YZRunAfterPluginOverlayDismissed(UIViewController *viewController, v
     }
 
     delayedBlock();
+}
+
+static id YZCreateWeChatWebProfileController(NSURL *profileURL) {
+    if (!profileURL) return nil;
+
+    Class webVCClass = NSClassFromString(@"MMWebViewController");
+    if (!webVCClass) webVCClass = NSClassFromString(@"WCWebViewController");
+    if (!webVCClass) webVCClass = NSClassFromString(@"MMWebViewController_Navigation");
+    if (!webVCClass) return nil;
+
+    NSString *urlString = profileURL.absoluteString;
+    NSArray *urlCandidates = @[urlString, profileURL];
+    @try {
+        SEL init3 = NSSelectorFromString(@"initWithURL:presentModal:extraInfo:");
+        if ([webVCClass instancesRespondToSelector:init3]) {
+            for (id url in urlCandidates) {
+                id webVC = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)([webVCClass alloc], init3, url, NO, nil);
+                if ([webVC isKindOfClass:UIViewController.class]) return webVC;
+            }
+        }
+
+        SEL init2 = NSSelectorFromString(@"initWithURL:presentModal:");
+        if ([webVCClass instancesRespondToSelector:init2]) {
+            for (id url in urlCandidates) {
+                id webVC = ((id (*)(id, SEL, id, BOOL))objc_msgSend)([webVCClass alloc], init2, url, NO);
+                if ([webVC isKindOfClass:UIViewController.class]) return webVC;
+            }
+        }
+
+        SEL initURL = NSSelectorFromString(@"initWithURL:");
+        if ([webVCClass instancesRespondToSelector:initURL]) {
+            for (id url in urlCandidates) {
+                id webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURL, url);
+                if ([webVC isKindOfClass:UIViewController.class]) return webVC;
+            }
+        }
+
+        SEL initURLString = NSSelectorFromString(@"initWithURLString:");
+        if ([webVCClass instancesRespondToSelector:initURLString]) {
+            id webVC = ((id (*)(id, SEL, id))objc_msgSend)([webVCClass alloc], initURLString, urlString);
+            if ([webVC isKindOfClass:UIViewController.class]) return webVC;
+        }
+
+        id webVC = ((id (*)(id, SEL))objc_msgSend)([webVCClass alloc], @selector(init));
+        if (![webVC isKindOfClass:UIViewController.class]) return nil;
+
+        for (NSString *selectorName in @[@"setURL:", @"setUrl:", @"setM_nsURL:", @"setM_nsUrl:", @"setRawUrl:", @"setRawURL:"]) {
+            SEL selector = NSSelectorFromString(selectorName);
+            if (![webVC respondsToSelector:selector]) continue;
+            ((void (*)(id, SEL, id))objc_msgSend)(webVC, selector, urlString);
+            return webVC;
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] openBrandProfile 创建微信 WebView 失败: %@", exception.reason);
+    }
+
+    return nil;
+}
+
+static BOOL YZPresentWeChatWebProfileController(UIViewController *webVC) {
+    if (!webVC) return NO;
+
+    UINavigationController *nav = YZWeChatRootNavController();
+    UIWindow *keyWindow = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+            if (w.isKeyWindow) { keyWindow = w; break; }
+        }
+        if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+        break;
+    }
+    UIViewController *topVC = keyWindow.rootViewController;
+    while (topVC.presentedViewController) topVC = topVC.presentedViewController;
+
+    if (nav) {
+        [nav pushViewController:webVC animated:YES];
+        return YES;
+    }
+    if (topVC) {
+        UINavigationController *wrapper = [[UINavigationController alloc] initWithRootViewController:webVC];
+        [topVC presentViewController:wrapper animated:YES completion:nil];
+        return YES;
+    }
+    return NO;
 }
 
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
@@ -905,23 +916,24 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
-    // 8.0.74 真机崩溃日志显示底部胶囊点击后触发 doesNotRecognizeSelector，
-    // 调用栈经过本插件。MMWebViewController 私有构造器在不同微信版本签名不稳定，
-    // @try 无法兜住所有 objc_msgSend 崩溃，先禁用该路径，避免点击即闪退。
-    return NO;
+    NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
+    UIViewController *webVC = YZCreateWeChatWebProfileController(url);
+    if (!webVC) return NO;
+
+    YZRunAfterPluginOverlayDismissed(viewController, ^{
+        BOOL shown = YZPresentWeChatWebProfileController(webVC);
+        NSLog(@"[小杳知] openBrandProfile 使用微信原生 WebView 打开 %@，shown=%@", url.absoluteString, shown ? @"YES" : @"NO");
+    });
+    return YES;
 }
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
     if (brandUserName.length == 0) return NO;
 
-    NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
-    if (!url || !YZAppDelegateCanHandleProfileURL()) return NO;
-
-    YZRunAfterPluginOverlayDismissed(viewController, ^{
-        BOOL handled = YZOpenURLThroughWeChatAppDelegate(url);
-        NSLog(@"[小杳知] openBrandProfile 通过微信 AppDelegate 路由 %@，handled=%@", url.absoluteString, handled ? @"YES" : @"NO");
-    });
-    return YES;
+    if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
+        return [self openBrandWebProfileFromViewController:viewController];
+    }
+    return NO;
 }
 
 + (UIImage *)getSelfAvatar {

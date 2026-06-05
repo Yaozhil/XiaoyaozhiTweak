@@ -26,7 +26,9 @@
 - 客户测试上一版本出现“能跳公众号主页但无法操作，必须杀后台重开”，高度疑似插件 window overlay 未移除而拦截触摸；当前已改为命中 `dismissAnimatedWithCompletion:` 时先移除 overlay 再跳转，仍需客户复测确认。
 - 打开公众号主页/资料页可能让微信本地生成 contact 缓存，导致列表状态字段误报“已关注”；当前关注判断已改为只信任 subscribe/subscribed 类明确字段，且打开主页链路不再主动写入本地 contact。
 - 点击底部胶囊时，`1.1.7` 出现黑屏但有返回按钮，判断为品牌/公众号专用资料页控制器存在但不适合当前初始化参数；当前已停用所有私有资料页 VC push，不再伪造 contact。
-- 用户反馈后续仍黑屏并且返回后全黑，说明通用/品牌资料页 VC push 路线整体会污染微信导航栈；当前底部入口停用私有资料页 VC，改走微信 AppDelegate/Universal Link 内部路由处理 mp 链接。
+- 用户反馈后续仍黑屏并且返回后全黑，说明通用/品牌资料页 VC push 路线整体会污染微信导航栈；底部入口已停用私有资料页 VC。
+- 用户真机反馈 `6af785b` 点击底部关注后只剩系统状态栏、其余全黑，说明微信 AppDelegate/Universal Link 路由 `profile_ext` 也不适合从插件 overlay 场景触发；当前已移除该路线，改为关闭插件 view 后 push 微信原生 `MMWebViewController/WCWebViewController`。
+- 用户补充旧方案能进入公众号主页但不能上下滑动，风险点更像插件 view/window 透明遮罩没有移除导致触摸被拦截；当前 `dismissAnimated` 已在移除 view 前禁用 `userInteractionEnabled` 并清理动画。
 - 受限账号进入公众号主页只看到“发送消息”、没有关注按钮，可能是微信账号限制或服务端状态导致；插件只能打开正确的微信内部主页，无法绕过微信限制强制关注。
 - `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器或自动关注 selector。当前已禁用 WebView 私有构造，并让底部胶囊不直接调用自动关注私有接口。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
