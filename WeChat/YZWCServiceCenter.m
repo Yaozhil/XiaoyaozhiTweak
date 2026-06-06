@@ -564,8 +564,76 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
-    // 8.0.74 真机反馈直接构造 MMWebViewController/WCWebViewController 会点击即闪退。
-    // 这条路先禁用，后续只在拿到稳定业务入口后恢复。
+    NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
+    if (!url) return NO;
+
+    NSDictionary *extraInfo = @{
+        @"scene": @124,
+        @"fromScene": @124,
+        @"rawUrl": kYZOfficialAccountProfileURL
+    };
+
+    NSArray<NSString *> *classNames = @[
+        @"MMWebViewController",
+        @"WCWebViewController"
+    ];
+    for (NSString *className in classNames) {
+        Class cls = NSClassFromString(className);
+        if (!cls || ![cls isSubclassOfClass:UIViewController.class]) continue;
+
+        NSArray<NSDictionary<NSString *, id> *> *attempts = @[
+            @{@"selector": @"initWithURL:presentModal:extraInfo:", @"mode": @"url3"},
+            @{@"selector": @"initWithURL:presentModal:", @"mode": @"url2"},
+            @{@"selector": @"initWithURL:", @"mode": @"url1"},
+            @{@"selector": @"initWithURLString:", @"mode": @"string1"},
+            @{@"selector": @"initWithRequest:", @"mode": @"request1"}
+        ];
+
+        for (NSDictionary<NSString *, id> *attempt in attempts) {
+            NSString *selectorName = attempt[@"selector"];
+            NSString *mode = attempt[@"mode"];
+            SEL selector = NSSelectorFromString(selectorName);
+            if (![cls instancesRespondToSelector:selector]) continue;
+
+            @try {
+                id allocated = [cls alloc];
+                id controller = nil;
+                if ([mode isEqualToString:@"url3"]) {
+                    controller = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)(allocated, selector, url, NO, extraInfo);
+                    if (!controller) {
+                        allocated = [cls alloc];
+                        controller = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL, NO, extraInfo);
+                    }
+                } else if ([mode isEqualToString:@"url2"]) {
+                    controller = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(allocated, selector, url, NO);
+                    if (!controller) {
+                        allocated = [cls alloc];
+                        controller = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL, NO);
+                    }
+                } else if ([mode isEqualToString:@"url1"]) {
+                    controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, url);
+                    if (!controller) {
+                        allocated = [cls alloc];
+                        controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL);
+                    }
+                } else if ([mode isEqualToString:@"string1"]) {
+                    controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL);
+                } else if ([mode isEqualToString:@"request1"]) {
+                    NSURLRequest *request = [NSURLRequest requestWithURL:url
+                                                              cachePolicy:NSURLRequestUseProtocolCachePolicy
+                                                          timeoutInterval:15.0];
+                    controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, request);
+                }
+
+                if ([controller isKindOfClass:UIViewController.class]) {
+                    return [self presentController:(UIViewController *)controller fromViewController:viewController];
+                }
+            } @catch (NSException *exception) {
+                NSLog(@"[小杳知] openBrandWebProfile %@ %@ failed: %@", className, selectorName, exception.reason);
+            }
+        }
+    }
+
     return NO;
 }
 

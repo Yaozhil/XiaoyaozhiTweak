@@ -5,7 +5,7 @@
 - 用户真机反馈：点击“投喂一下”曾直接黑屏；原因指向菜单入口 present 微信私有扫码控制器后未成功跳转。当前已按用户要求移除所有可见赞赏行为，仅保留震动。
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。
-- 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”。当前已移除外部 scheme 和 WKWebView 兜底，原生资料页打不开时复制公众号名称提示搜索。
+- 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”。当前已移除外部 scheme 和 WKWebView 兜底，底部改用微信原生 WebView 加载指定 `profile_ext` 链接，内部控制器不可用时复制公众号名称提示搜索。
 - 底部胶囊曾只显示“已复制公众号名称，请搜索关注”，新增判断显示原因可能是 `viewController.navigationController` 和微信根导航均未命中，旧代码因此完全跳过资料页创建；当前已增加无 pushNav 时的 present 兜底。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 
@@ -30,7 +30,7 @@
 - 用户真机反馈 `6af785b` 点击底部关注后只剩系统状态栏、其余全黑，说明微信 AppDelegate/Universal Link 路由 `profile_ext` 也不适合从插件 overlay 场景触发；当前已移除该路线，改为关闭插件 view 后 push 微信原生 `MMWebViewController/WCWebViewController`。
 - 用户补充旧方案能进入公众号主页但不能上下滑动，风险点更像插件 view/window 透明遮罩没有移除导致触摸被拦截；当前 `dismissAnimated` 已在移除 view 前禁用 `userInteractionEnabled` 并清理动画。
 - 受限账号进入公众号主页只看到“发送消息”、没有关注按钮，可能是微信账号限制或服务端状态导致；插件只能打开正确的微信内部主页，无法绕过微信限制强制关注。
-- `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器或自动关注 selector。当前已禁用 WebView 私有构造，并让底部胶囊不直接调用自动关注私有接口。
+- `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器或自动关注 selector。当前底部胶囊不直接调用自动关注私有接口，WebView 跳转只走 `respondsToSelector` 命中的初始化路径并包异常保护，仍需真机复测确认微信 8.0.74 的实际签名。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
 
 ## 失败尝试

@@ -3,7 +3,7 @@
 ## 项目概览
 
 - 项目是小杳知微信增强插件，当前工作目录为 `C:\Users\杳知\Desktop\XiaoyaozhiTweak_v1.0.1`。
-- 当前主线目标是：公众号关注入口稳定可靠，不闪退、不误报已关注；首次弹窗可尝试自动关注，底部胶囊优先提供安全的手动关注兜底；“投喂一下”只保留震动反馈，不展示赞赏弹窗、不跳转、不 toast。
+- 当前主线目标是：公众号关注入口稳定可靠，不闪退、不误报已关注；首次弹窗可尝试自动关注，底部胶囊提供微信内公众号主页入口；“投喂一下”只保留震动反馈，不展示赞赏弹窗、不跳转、不 toast。
 
 ## 关键约定
 
@@ -25,5 +25,5 @@
 
 - 用户当前不需要展示赞赏弹窗或真实赞赏页直达；旧赞赏扫码/赞赏码 provider 已从构建中移除并删除。
 - 首次弹窗必须等待当前微信账号可检测到后再展示，避免未登录时提前标记已展示。
-- 首次弹窗的自动关注失败时只提示失败；底部胶囊不直接调用高风险自动关注私有接口，优先打开低风险资料页或复制公众号 ID 供手动关注。
-- 用户提供公众号主页链接：`https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124`；因定制包 bundle id 与官方微信不同，禁止在底部胶囊兜底中调用 `weixin://` 外部 scheme，避免跳到官方微信并弹 `invalid_source`；`6af785b` 的 AppDelegate/Universal Link 路由真机黑屏，当前也禁用。
+- 首次弹窗的自动关注失败时只提示失败；底部胶囊不直接调用高风险自动关注私有接口，点击后先复制公众号名称兜底，再在微信原生 WebView 内打开公众号主页。
+- 用户提供公众号主页链接：`https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124`；因定制包 bundle id 与官方微信不同，禁止在底部胶囊兜底中调用 `weixin://` 外部 scheme，避免跳到官方微信并弹 `invalid_source`；`6af785b` 的 AppDelegate/Universal Link 路由真机黑屏，当前也禁用，底部改走受保护的 `MMWebViewController/WCWebViewController` 初始化探测。
