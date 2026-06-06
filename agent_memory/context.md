@@ -15,7 +15,7 @@
 
 - `XiaoyaozhiTweak.xm`：Logos hook 集中入口；负责首次倒计时弹窗、安装指纹检测、弹窗确认后的自动关注。
 - `UI/YZGlassSheetController.m`：插件主界面；底部关注胶囊、投喂入口震动、toast 位置等 UI 行为。
-- `WeChat/YZWCServiceCenter.m`：微信私有服务桥接；负责检测公众号关注状态、发起关注请求、打开公众号主页兜底。底部主页入口当前不走 AppDelegate/Universal Link，而是在插件 view 移除后 push 微信原生 `MMWebViewController/WCWebViewController`。
+- `WeChat/YZWCServiceCenter.m`：微信私有服务桥接；负责检测公众号关注状态、发起关注请求、打开公众号主页兜底。底部主页入口当前不走 AppDelegate/Universal Link，也不直接构造/push `MMWebViewController/WCWebViewController`，而是在插件 view 移除后尝试微信内部 URL 分发服务打开 mp 链接。
 - `WeChat/YZWCServiceCenter.m`：自动关注当前优先参考 `WCEhance/WCPulse` 中出现的 `BrandDirectlyOperateContactLogic -> tryAddBrandContact:context:`，失败再回退老的联系人/品牌号 selector。
 - `WeChat/YZWCServiceCenter.m`：同时负责设备型号识别，当前已补齐 iPhone 17 系列 `iPhone18,*` 映射，未知新机型回退显示硬件标识。
 - `WeChat/YZWCRuntime.m`：微信服务定位；当前会先走 `MMServiceCenter defaultCenter`，失败后兜底到 `MMContext activeUserContext -> serviceCenter`。
@@ -25,5 +25,5 @@
 
 - 用户当前不需要展示赞赏弹窗或真实赞赏页直达；旧赞赏扫码/赞赏码 provider 已从构建中移除并删除。
 - 首次弹窗必须等待当前微信账号可检测到后再展示，避免未登录时提前标记已展示。
-- 首次弹窗的自动关注失败时只提示失败；底部胶囊不直接调用高风险自动关注私有接口，点击后先复制公众号名称兜底，再在微信原生 WebView 内打开公众号主页。
-- 用户提供公众号主页链接：`https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124`；因定制包 bundle id 与官方微信不同，禁止在底部胶囊兜底中调用 `weixin://` 外部 scheme，避免跳到官方微信并弹 `invalid_source`；`6af785b` 的 AppDelegate/Universal Link 路由真机黑屏，当前也禁用，底部改走受保护的 `MMWebViewController/WCWebViewController` 初始化探测。
+- 首次弹窗的自动关注失败时只提示失败；底部胶囊不直接调用高风险自动关注私有接口，点击后先复制公众号名称兜底，再尝试微信内部 URL 分发服务打开公众号主页。
+- 用户提供公众号主页链接：`https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124`；因定制包 bundle id 与官方微信不同，禁止在底部胶囊兜底中调用 `weixin://` 外部 scheme，避免跳到官方微信并弹 `invalid_source`；`6af785b` 的 AppDelegate/Universal Link 路由真机黑屏，直接构造/push `MMWebViewController/WCWebViewController` 真机也黑屏，当前两条都禁用。

@@ -839,6 +839,23 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)showToast:(NSString *)msg {
     dispatch_async(dispatch_get_main_queue(), ^{
+        UIView *container = self.view.window ?: self.view;
+        if (!container.window) {
+            UIWindow *keyWindow = nil;
+            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+                if (![scene isKindOfClass:UIWindowScene.class] || scene.activationState != UISceneActivationStateForegroundActive) continue;
+                for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+                    if (window.isKeyWindow) {
+                        keyWindow = window;
+                        break;
+                    }
+                }
+                if (!keyWindow) keyWindow = ((UIWindowScene *)scene).windows.firstObject;
+                break;
+            }
+            if (keyWindow) container = keyWindow;
+        }
+
         UILabel *toast = [[UILabel alloc] init];
         toast.text = msg;
         toast.font = [UIFont systemFontOfSize:13];
@@ -851,13 +868,14 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
         CGSize s = [msg boundingRectWithSize:CGSizeMake(260, 60) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:toast.font} context:nil].size;
         CGFloat tw = MIN(ceil(s.width)+36, 280), th = ceil(s.height)+20;
-        CGFloat toastY = self.view.bounds.size.height * 0.7;
-        if (self.bottomBar) {
+        CGRect bounds = container.bounds;
+        CGFloat toastY = bounds.size.height * 0.7;
+        if (container == self.view && self.bottomBar) {
             toastY = CGRectGetMinY(self.bottomBar.frame) - th - 12;
         }
-        toastY = MAX(96, MIN(toastY, self.view.bounds.size.height - th - 36));
-        toast.frame = CGRectMake((self.view.bounds.size.width-tw)/2.0, toastY, tw, th);
-        [self.view addSubview:toast];
+        toastY = MAX(96, MIN(toastY, bounds.size.height - th - 36));
+        toast.frame = CGRectMake((bounds.size.width-tw)/2.0, toastY, tw, th);
+        [container addSubview:toast];
 
         [UIView animateWithDuration:0.22 animations:^{ toast.alpha = 1; } completion:^(BOOL d){
             [UIView animateWithDuration:0.22 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{ toast.alpha = 0; } completion:^(BOOL d2){ [toast removeFromSuperview]; }];

@@ -50,6 +50,80 @@ static id YZCallOneArgSelector(id target, NSString *selectorName, id argument) {
     }
 }
 
+static BOOL YZInvokeSelectorWithArguments(id target, NSString *selectorName, NSArray *arguments) {
+    if (!target || selectorName.length == 0) return NO;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![target respondsToSelector:selector]) return NO;
+
+    @try {
+        NSMethodSignature *signature = [target methodSignatureForSelector:selector];
+        if (!signature) return NO;
+        NSUInteger argumentCount = signature.numberOfArguments > 2 ? signature.numberOfArguments - 2 : 0;
+        if (argumentCount > arguments.count) return NO;
+
+        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+        invocation.target = target;
+        invocation.selector = selector;
+
+        for (NSUInteger index = 0; index < argumentCount; index++) {
+            id value = arguments[index];
+            const char *type = [signature getArgumentTypeAtIndex:index + 2];
+            while (*type == 'r' || *type == 'n' || *type == 'N' || *type == 'o' || *type == 'O' || *type == 'R' || *type == 'V') type++;
+
+            if (type[0] == '@') {
+                id objectValue = value == (id)kCFNull ? nil : value;
+                [invocation setArgument:&objectValue atIndex:index + 2];
+            } else if (strcmp(type, @encode(BOOL)) == 0 || strcmp(type, "B") == 0) {
+                BOOL boolValue = [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : NO;
+                [invocation setArgument:&boolValue atIndex:index + 2];
+            } else if (strcmp(type, @encode(NSInteger)) == 0 ||
+                       strcmp(type, @encode(NSUInteger)) == 0 ||
+                       strcmp(type, @encode(int)) == 0 ||
+                       strcmp(type, @encode(unsigned int)) == 0 ||
+                       strcmp(type, @encode(long)) == 0 ||
+                       strcmp(type, @encode(unsigned long)) == 0 ||
+                       strcmp(type, @encode(long long)) == 0 ||
+                       strcmp(type, @encode(unsigned long long)) == 0) {
+                NSInteger integerValue = [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
+                [invocation setArgument:&integerValue atIndex:index + 2];
+            } else {
+                return NO;
+            }
+        }
+
+        [invocation invoke];
+
+        const char *returnType = signature.methodReturnType;
+        while (*returnType == 'r' || *returnType == 'n' || *returnType == 'N' || *returnType == 'o' || *returnType == 'O' || *returnType == 'R' || *returnType == 'V') returnType++;
+        if (strcmp(returnType, @encode(void)) == 0) return YES;
+        if (strcmp(returnType, @encode(BOOL)) == 0 || strcmp(returnType, "B") == 0) {
+            BOOL result = NO;
+            [invocation getReturnValue:&result];
+            return result;
+        }
+        if (returnType[0] == '@') {
+            __unsafe_unretained id result = nil;
+            [invocation getReturnValue:&result];
+            return result != nil;
+        }
+        if (strcmp(returnType, @encode(NSInteger)) == 0 ||
+            strcmp(returnType, @encode(NSUInteger)) == 0 ||
+            strcmp(returnType, @encode(int)) == 0 ||
+            strcmp(returnType, @encode(unsigned int)) == 0 ||
+            strcmp(returnType, @encode(long)) == 0 ||
+            strcmp(returnType, @encode(unsigned long)) == 0 ||
+            strcmp(returnType, @encode(long long)) == 0 ||
+            strcmp(returnType, @encode(unsigned long long)) == 0) {
+            NSInteger result = 0;
+            [invocation getReturnValue:&result];
+            return result != 0;
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] URL selector %@ failed: %@", selectorName, exception.reason);
+    }
+    return NO;
+}
+
 static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
     for (NSString *selectorName in selectorNames) {
         id value = YZCallNoArgSelector(target, selectorName);
@@ -227,6 +301,107 @@ static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController) {
     if (!viewController) return NO;
     NSString *className = NSStringFromClass(viewController.class);
     return [className containsString:@"YZGlass"] || viewController.presentingViewController != nil;
+}
+
+static BOOL YZAddUniqueTarget(NSMutableArray *targets, id target) {
+    if (!target || target == (id)kCFNull) return NO;
+    for (id existing in targets) {
+        if (existing == target) return NO;
+    }
+    [targets addObject:target];
+    return YES;
+}
+
+static NSArray *YZWeChatURLRouterTargets(void) {
+    NSArray<NSString *> *classNames = @[
+        @"MMURLHandler",
+        @"MMURLRouter",
+        @"MMURLService",
+        @"MMOpenURLService",
+        @"MMWebViewURLHandler",
+        @"MMWebViewService",
+        @"MMWebViewMgr",
+        @"WCURLHandler",
+        @"WCURLRouter",
+        @"WCURLService",
+        @"WCWebViewService",
+        @"WCWebViewMgr",
+        @"MMLinkHandler",
+        @"WCLinkHandler",
+        @"MMRouter",
+        @"WCRouter"
+    ];
+
+    NSMutableArray *targets = [NSMutableArray array];
+    for (NSString *className in classNames) {
+        Class cls = NSClassFromString(className);
+        if (!cls) continue;
+
+        YZAddUniqueTarget(targets, [YZWCRuntime getService:className]);
+        YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"sharedInstance"));
+        YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"defaultCenter"));
+        YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"defaultManager"));
+        YZAddUniqueTarget(targets, cls);
+    }
+    return targets;
+}
+
+static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewController) {
+    if (!url) return NO;
+
+    NSString *urlString = url.absoluteString;
+    NSDictionary *extraInfo = @{
+        @"scene": @124,
+        @"fromScene": @124,
+        @"rawUrl": urlString
+    };
+    NSDictionary *options = @{
+        @"scene": @124,
+        @"fromScene": @124,
+        @"extraInfo": extraInfo
+    };
+    UIViewController *presenter = viewController ?: nil;
+
+    NSArray<NSDictionary<NSString *, id> *> *attempts = @[
+        @{@"selector": @"openURL:", @"args": @[url]},
+        @{@"selector": @"openURL:", @"args": @[urlString]},
+        @{@"selector": @"openUrl:", @"args": @[url]},
+        @{@"selector": @"openUrl:", @"args": @[urlString]},
+        @{@"selector": @"handleURL:", @"args": @[url]},
+        @{@"selector": @"handleURL:", @"args": @[urlString]},
+        @{@"selector": @"handleOpenURL:", @"args": @[url]},
+        @{@"selector": @"handleOpenURL:", @"args": @[urlString]},
+        @{@"selector": @"openURLString:", @"args": @[urlString]},
+        @{@"selector": @"openUrlString:", @"args": @[urlString]},
+        @{@"selector": @"handleURLString:", @"args": @[urlString]},
+        @{@"selector": @"openURL:extraInfo:", @"args": @[url, extraInfo]},
+        @{@"selector": @"openURLString:extraInfo:", @"args": @[urlString, extraInfo]},
+        @{@"selector": @"openURL:withExtraInfo:", @"args": @[url, extraInfo]},
+        @{@"selector": @"openURLString:withExtraInfo:", @"args": @[urlString, extraInfo]},
+        @{@"selector": @"openURL:options:", @"args": @[url, options]},
+        @{@"selector": @"openURLString:options:", @"args": @[urlString, options]}
+    ];
+
+    if (presenter) {
+        attempts = [attempts arrayByAddingObjectsFromArray:@[
+            @{@"selector": @"openURL:fromViewController:", @"args": @[url, presenter]},
+            @{@"selector": @"openURLString:fromViewController:", @"args": @[urlString, presenter]},
+            @{@"selector": @"openURL:viewController:", @"args": @[url, presenter]},
+            @{@"selector": @"openURLString:viewController:", @"args": @[urlString, presenter]}
+        ]];
+    }
+
+    for (id target in YZWeChatURLRouterTargets()) {
+        for (NSDictionary<NSString *, id> *attempt in attempts) {
+            NSString *selectorName = attempt[@"selector"];
+            NSArray *arguments = attempt[@"args"];
+            if (YZInvokeSelectorWithArguments(target, selectorName, arguments)) {
+                NSLog(@"[小杳知] open official account url via %@ %@", NSStringFromClass([target class]), selectorName);
+                return YES;
+            }
+        }
+    }
+    return NO;
 }
 
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
@@ -567,74 +742,27 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
     if (!url) return NO;
 
-    NSDictionary *extraInfo = @{
-        @"scene": @124,
-        @"fromScene": @124,
-        @"rawUrl": kYZOfficialAccountProfileURL
-    };
+    if (YZShouldDismissBeforePresenting(viewController)) {
+        __block BOOL opened = NO;
+        void (^openURL)(void) = ^{
+            opened = YZOpenURLThroughWeChatRouter(url, [self topMostViewController]);
+        };
 
-    NSArray<NSString *> *classNames = @[
-        @"MMWebViewController",
-        @"WCWebViewController"
-    ];
-    for (NSString *className in classNames) {
-        Class cls = NSClassFromString(className);
-        if (!cls || ![cls isSubclassOfClass:UIViewController.class]) continue;
-
-        NSArray<NSDictionary<NSString *, id> *> *attempts = @[
-            @{@"selector": @"initWithURL:presentModal:extraInfo:", @"mode": @"url3"},
-            @{@"selector": @"initWithURL:presentModal:", @"mode": @"url2"},
-            @{@"selector": @"initWithURL:", @"mode": @"url1"},
-            @{@"selector": @"initWithURLString:", @"mode": @"string1"},
-            @{@"selector": @"initWithRequest:", @"mode": @"request1"}
-        ];
-
-        for (NSDictionary<NSString *, id> *attempt in attempts) {
-            NSString *selectorName = attempt[@"selector"];
-            NSString *mode = attempt[@"mode"];
-            SEL selector = NSSelectorFromString(selectorName);
-            if (![cls instancesRespondToSelector:selector]) continue;
-
-            @try {
-                id allocated = [cls alloc];
-                id controller = nil;
-                if ([mode isEqualToString:@"url3"]) {
-                    controller = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)(allocated, selector, url, NO, extraInfo);
-                    if (!controller) {
-                        allocated = [cls alloc];
-                        controller = ((id (*)(id, SEL, id, BOOL, id))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL, NO, extraInfo);
-                    }
-                } else if ([mode isEqualToString:@"url2"]) {
-                    controller = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(allocated, selector, url, NO);
-                    if (!controller) {
-                        allocated = [cls alloc];
-                        controller = ((id (*)(id, SEL, id, BOOL))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL, NO);
-                    }
-                } else if ([mode isEqualToString:@"url1"]) {
-                    controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, url);
-                    if (!controller) {
-                        allocated = [cls alloc];
-                        controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL);
-                    }
-                } else if ([mode isEqualToString:@"string1"]) {
-                    controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, kYZOfficialAccountProfileURL);
-                } else if ([mode isEqualToString:@"request1"]) {
-                    NSURLRequest *request = [NSURLRequest requestWithURL:url
-                                                              cachePolicy:NSURLRequestUseProtocolCachePolicy
-                                                          timeoutInterval:15.0];
-                    controller = ((id (*)(id, SEL, id))objc_msgSend)(allocated, selector, request);
-                }
-
-                if ([controller isKindOfClass:UIViewController.class]) {
-                    return [self presentController:(UIViewController *)controller fromViewController:viewController];
-                }
-            } @catch (NSException *exception) {
-                NSLog(@"[小杳知] openBrandWebProfile %@ %@ failed: %@", className, selectorName, exception.reason);
-            }
+        SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
+        if ([viewController respondsToSelector:customDismissSel]) {
+            ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, openURL);
+            return opened;
         }
+
+        [viewController dismissViewControllerAnimated:YES completion:^{
+            if (!YZOpenURLThroughWeChatRouter(url, [self topMostViewController])) {
+                UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
+            }
+        }];
+        return YES;
     }
 
-    return NO;
+    return YZOpenURLThroughWeChatRouter(url, viewController ?: [self topMostViewController]);
 }
 
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController {
