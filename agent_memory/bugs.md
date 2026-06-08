@@ -5,7 +5,7 @@
 - 用户真机反馈：点击“投喂一下”曾直接黑屏；原因指向菜单入口 present 微信私有扫码控制器后未成功跳转。当前已按用户要求移除所有可见赞赏行为，仅保留震动。
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。
-- 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”。当前已移除外部 scheme 和 WKWebView 兜底，底部改用微信内部 URL 分发服务加载指定 `profile_ext` 链接，路由不可用时复制公众号名称提示搜索。
+- 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”，动态枚举出的微信 Web/WebView/load/jump 分发服务真机仍会黑屏。当前底部入口保留跳转，但只尝试固定白名单里的高层 URL/Link router，命不中时复制公众号名称并提示搜索关注。
 - 底部胶囊曾只显示“已复制公众号名称，请搜索关注”，新增判断显示原因可能是 `viewController.navigationController` 和微信根导航均未命中，旧代码因此完全跳过资料页创建；当前已增加无 pushNav 时的 present 兜底。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 
@@ -13,7 +13,7 @@
 
 - 公众号自动关注依赖微信私有 `CContactMgr`/品牌号相关 selector；已扩大兼容候选并加入 `CContact/MMContact` 参数兜底，但不同微信版本仍可能变更 selector 或内部校验。
 - 新接入的 `BrandDirectlyOperateContactLogic -> tryAddBrandContact:context:` 来自参考插件二进制线索，属于更贴近微信品牌号逻辑的自动关注路径；但上下文字段仍是按可见类名和常见 setter/KVC 保守填充，需要 GitHub Actions 构建和真机验证确认不同微信版本是否命中。
-- `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；微信服务端是否最终完成关注，需要正常账号真机验证。
+- `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；当前已恢复首次弹窗调用该方法，但微信服务端是否最终完成关注，需要正常账号真机验证。
 - `brandFollowState:` 只信任 subscribe/subscribed 类明确状态；若某微信版本完全不暴露关注状态，会返回无法确认。前台保留状态布局，但只在确认已关注时显示“已关注”，其他情况显示“去关注”。
 - 用户自己的已关注账号曾被显示为未关注，说明 subscribe/subscribed 字段并非所有微信版本都会暴露真实状态；当前底部入口不再显示“未关注”字样。
 - 参考插件 `com.shtm.xos_1.4.5_iphoneos-arm64e.deb` 为 `data.tar.lzma`，当前 Windows 环境缺少 lzma/xz 工具，暂未能读取内部动态库；`微信助手_3.9-5_无根.deb` 可读取并已提取 selector 线索。
@@ -30,7 +30,7 @@
 - 用户真机反馈 `6af785b` 点击底部关注后只剩系统状态栏、其余全黑，说明微信 AppDelegate/Universal Link 路由 `profile_ext` 也不适合从插件 overlay 场景触发；当前已移除该路线。
 - 用户补充旧方案能进入公众号主页但不能上下滑动，风险点更像插件 view/window 透明遮罩没有移除导致触摸被拦截；当前 `dismissAnimated` 已在移除 view 前禁用 `userInteractionEnabled` 并清理动画。
 - 受限账号进入公众号主页只看到“发送消息”、没有关注按钮，可能是微信账号限制或服务端状态导致；插件只能打开正确的微信内部主页，无法绕过微信限制强制关注。
-- `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器或自动关注 selector。当前底部胶囊不直接调用自动关注私有接口，也不再直接构造/push WebView VC，改为 `NSInvocation` 按方法签名探测微信 URL 路由服务。
+- `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器、自动关注 selector 或未知 URL/Web 路由服务。当前底部胶囊不直接调用自动关注私有接口，也不再直接构造/push WebView VC 或动态探测微信 URL/Web 路由服务，只走固定高层 URL/Link router 白名单。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
 
 ## 失败尝试

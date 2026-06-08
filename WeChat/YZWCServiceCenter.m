@@ -4,6 +4,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
+#import <stdlib.h>
 #import <string.h>
 #import <sys/sysctl.h>
 
@@ -318,14 +319,9 @@ static NSArray *YZWeChatURLRouterTargets(void) {
         @"MMURLRouter",
         @"MMURLService",
         @"MMOpenURLService",
-        @"MMWebViewURLHandler",
-        @"MMWebViewService",
-        @"MMWebViewMgr",
         @"WCURLHandler",
         @"WCURLRouter",
         @"WCURLService",
-        @"WCWebViewService",
-        @"WCWebViewMgr",
         @"MMLinkHandler",
         @"WCLinkHandler",
         @"MMRouter",
@@ -363,31 +359,45 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
     UIViewController *presenter = viewController ?: nil;
 
     NSArray<NSDictionary<NSString *, id> *> *attempts = @[
-        @{@"selector": @"openURL:", @"args": @[url]},
-        @{@"selector": @"openURL:", @"args": @[urlString]},
-        @{@"selector": @"openUrl:", @"args": @[url]},
-        @{@"selector": @"openUrl:", @"args": @[urlString]},
-        @{@"selector": @"handleURL:", @"args": @[url]},
-        @{@"selector": @"handleURL:", @"args": @[urlString]},
-        @{@"selector": @"handleOpenURL:", @"args": @[url]},
-        @{@"selector": @"handleOpenURL:", @"args": @[urlString]},
         @{@"selector": @"openURLString:", @"args": @[urlString]},
         @{@"selector": @"openUrlString:", @"args": @[urlString]},
         @{@"selector": @"handleURLString:", @"args": @[urlString]},
-        @{@"selector": @"openURL:extraInfo:", @"args": @[url, extraInfo]},
+        @{@"selector": @"openURL:", @"args": @[urlString]},
+        @{@"selector": @"openUrl:", @"args": @[urlString]},
+        @{@"selector": @"handleURL:", @"args": @[urlString]},
+        @{@"selector": @"handleOpenURL:", @"args": @[urlString]},
         @{@"selector": @"openURLString:extraInfo:", @"args": @[urlString, extraInfo]},
-        @{@"selector": @"openURL:withExtraInfo:", @"args": @[url, extraInfo]},
         @{@"selector": @"openURLString:withExtraInfo:", @"args": @[urlString, extraInfo]},
+        @{@"selector": @"openURLString:options:", @"args": @[urlString, options]},
+        @{@"selector": @"openURLString:fromScene:", @"args": @[urlString, @124]},
+        @{@"selector": @"openURLString:scene:", @"args": @[urlString, @124]},
+        @{@"selector": @"openURL:extraInfo:", @"args": @[urlString, extraInfo]},
+        @{@"selector": @"openURL:withExtraInfo:", @"args": @[urlString, extraInfo]},
+        @{@"selector": @"openURL:options:", @"args": @[urlString, options]},
+        @{@"selector": @"openURL:fromScene:", @"args": @[urlString, @124]},
+        @{@"selector": @"openURL:scene:", @"args": @[urlString, @124]},
+        @{@"selector": @"openURL:", @"args": @[url]},
+        @{@"selector": @"openUrl:", @"args": @[url]},
+        @{@"selector": @"handleURL:", @"args": @[url]},
+        @{@"selector": @"handleOpenURL:", @"args": @[url]},
+        @{@"selector": @"openURL:extraInfo:", @"args": @[url, extraInfo]},
+        @{@"selector": @"openURL:withExtraInfo:", @"args": @[url, extraInfo]},
         @{@"selector": @"openURL:options:", @"args": @[url, options]},
-        @{@"selector": @"openURLString:options:", @"args": @[urlString, options]}
+        @{@"selector": @"openURL:fromScene:", @"args": @[url, @124]},
+        @{@"selector": @"openURL:scene:", @"args": @[url, @124]}
     ];
 
     if (presenter) {
         attempts = [attempts arrayByAddingObjectsFromArray:@[
-            @{@"selector": @"openURL:fromViewController:", @"args": @[url, presenter]},
             @{@"selector": @"openURLString:fromViewController:", @"args": @[urlString, presenter]},
+            @{@"selector": @"openURLString:viewController:", @"args": @[urlString, presenter]},
+            @{@"selector": @"openURL:fromViewController:", @"args": @[urlString, presenter]},
+            @{@"selector": @"openURL:viewController:", @"args": @[urlString, presenter]},
+            @{@"selector": @"openURL:fromViewController:", @"args": @[url, presenter]},
             @{@"selector": @"openURL:viewController:", @"args": @[url, presenter]},
-            @{@"selector": @"openURLString:viewController:", @"args": @[urlString, presenter]}
+            @{@"selector": @"openURLString:fromViewController:extraInfo:", @"args": @[urlString, presenter, extraInfo]},
+            @{@"selector": @"openURL:fromViewController:extraInfo:", @"args": @[urlString, presenter, extraInfo]},
+            @{@"selector": @"openURL:fromViewController:extraInfo:", @"args": @[url, presenter, extraInfo]}
         ]];
     }
 
@@ -590,74 +600,73 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (BOOL)followBrand:(NSString *)brandUserName {
-    NSLog(@"[Xiaoyaozhi] followBrand disabled to avoid unstable private selectors, userName=%@", brandUserName);
-    return NO;
-#if 0
     if (brandUserName.length == 0) return NO;
 
     @try {
-        // 服务类候选: CContactMgr → CBrandContactMgr → CBrandMgr → MMBrandContactMgr
         NSArray<NSString *> *serviceClasses = @[@"CContactMgr", @"CBrandContactMgr", @"CBrandMgr", @"MMBrandContactMgr"];
-
         id contactMgr = [self getContactManager];
         id existingContact = YZBrandContactFromManager(contactMgr, brandUserName);
-        id syntheticContact = existingContact ?: YZCreateBrandContact(brandUserName);
-        NSArray *argumentCandidates = syntheticContact ? @[brandUserName, syntheticContact] : @[brandUserName];
-        NSInteger scene = 3;
-
-        // selector 候选，按参数个数分三组
-        NSArray<NSString *> *sel2Args = @[
-            @"addBrandContactByUserName:scene:",
-            @"addBrandContact:scene:",
-            @"followBrandContact:scene:",
-            @"followBrand:scene:",
-            @"subscribeBrandContact:scene:",
-            @"subscribeBrand:scene:",
-            @"addBrand:scene:",
-            @"addContact:scene:",
-            @"followContact:scene:",
-        ];
-        NSArray<NSString *> *sel3Args = @[
-            @"addBrandContact:scene:enterType:",
-            @"followBrandContact:scene:enterType:",
-            @"followBrand:scene:enterType:",
-            @"subscribeBrandContact:scene:enterType:",
-            @"subscribeBrand:scene:enterType:",
-            @"addBrand:scene:enterType:",
-            @"addContact:scene:enterType:",
-        ];
-        NSArray<NSString *> *sel1Arg = @[
-            @"followBrandContact:",
-            @"subscribeBrandContact:",
-        ];
+        NSArray *argumentCandidates = existingContact ? @[brandUserName, existingContact] : @[brandUserName];
+        NSNumber *scene = @3;
+        NSNumber *enterType = @0;
 
         for (NSString *svcClassName in serviceClasses) {
-            id mgr = nil;
-            if ([svcClassName isEqualToString:@"CContactMgr"]) {
-                mgr = contactMgr;
-            } else {
-                mgr = [YZWCRuntime getService:svcClassName];
-            }
+            id mgr = [svcClassName isEqualToString:@"CContactMgr"] ? contactMgr : [YZWCRuntime getService:svcClassName];
             if (!mgr) continue;
 
-            // 先尝试两参数版本 (userName, scene)
-            for (NSString *selName in sel2Args) {
-                for (id argument in argumentCandidates) {
-                    if (YZInvokeFollowSelector(mgr, svcClassName, selName, argument, scene, NO)) return YES;
+            for (id argument in argumentCandidates) {
+                NSArray<NSDictionary<NSString *, id> *> *attempts = @[
+                    @{@"selector": @"addBrandContactByUserName:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"addBrandContact:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"followBrandContact:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"followBrand:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"subscribeBrandContact:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"subscribeBrand:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"addBrand:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"addContact:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"followContact:scene:", @"args": @[argument, scene]},
+                    @{@"selector": @"addBrandContact:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"followBrandContact:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"followBrand:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"subscribeBrandContact:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"subscribeBrand:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"addBrand:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"addContact:scene:enterType:", @"args": @[argument, scene, enterType]},
+                    @{@"selector": @"followBrandContact:", @"args": @[argument]},
+                    @{@"selector": @"subscribeBrandContact:", @"args": @[argument]},
+                    @{@"selector": @"addBrandContact:", @"args": @[argument]},
+                    @{@"selector": @"addContact:", @"args": @[argument]}
+                ];
+
+                for (NSDictionary<NSString *, id> *attempt in attempts) {
+                    NSString *selectorName = attempt[@"selector"];
+                    NSArray *arguments = attempt[@"args"];
+                    if (YZInvokeSelectorWithArguments(mgr, selectorName, arguments)) {
+                        NSLog(@"[小杳知] followBrand hit %@ %@", svcClassName, selectorName);
+                        return YES;
+                    }
                 }
             }
+        }
 
-            // 再尝试三参数版本 (userName, scene, enterType)
-            for (NSString *selName in sel3Args) {
-                for (id argument in argumentCandidates) {
-                    if (YZInvokeFollowSelector(mgr, svcClassName, selName, argument, scene, YES)) return YES;
-                }
-            }
+        NSArray<NSString *> *logicClasses = @[@"BrandDirectlyOperateContactLogic", @"WCBrandDirectlyOperateContactLogic"];
+        for (NSString *className in logicClasses) {
+            Class logicClass = NSClassFromString(className);
+            if (!logicClass) continue;
 
-            // 最后尝试单参数版本 (userName)
-            for (NSString *selName in sel1Arg) {
+            NSMutableArray *targets = [NSMutableArray array];
+            YZAddUniqueTarget(targets, [YZWCRuntime getService:className]);
+            YZAddUniqueTarget(targets, YZCallNoArgSelector(logicClass, @"sharedInstance"));
+            YZAddUniqueTarget(targets, YZCallNoArgSelector(logicClass, @"defaultLogic"));
+            YZAddUniqueTarget(targets, [[logicClass alloc] init]);
+
+            for (id target in targets) {
                 for (id argument in argumentCandidates) {
-                    if (YZInvokeFollowSelector(mgr, svcClassName, selName, argument, scene, NO)) return YES;
+                    NSDictionary *context = @{@"scene": scene, @"fromScene": scene};
+                    if (YZInvokeSelectorWithArguments(target, @"tryAddBrandContact:context:", @[argument, context])) {
+                        NSLog(@"[小杳知] followBrand hit %@ tryAddBrandContact:context:", className);
+                        return YES;
+                    }
                 }
             }
         }
@@ -668,7 +677,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         [YZCrashGuard logCrashContext:@"followBrand"];
         return NO;
     }
-#endif
 }
 
 + (id)searchBrandContact:(NSString *)brandUserName viaContactMgr:(id)contactMgr {

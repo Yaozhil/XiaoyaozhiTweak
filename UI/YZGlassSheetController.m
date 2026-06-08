@@ -833,7 +833,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)handleFollowTap {
     // 底部胶囊以稳定为先：受限账号和部分微信版本直接调用自动关注私有接口可能闪退。
-    // 关注状态字段在不同微信版本不稳定，底部入口不因状态判断阻拦用户进入公众号。
+    // 点击仍要作为公众号主页入口；跳转失败时保留复制公众号名称作为兜底。
     [self openManualFollowFallback];
 }
 

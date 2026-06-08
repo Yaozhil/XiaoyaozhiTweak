@@ -319,7 +319,7 @@ static BOOL YZPerformFollow(void) {
         return YES;
     }
 
-    return NO;
+    return [YZWCServiceCenter followBrand:userName];
 }
 
 static void YZScheduleAlertAfterDelay(NSTimeInterval delay);
