@@ -6,6 +6,7 @@
 #import "YZConfigManager.h"
 #import "YZPluginLifecycle.h"
 #import "YZCrashGuard.h"
+#import "YZRuntimeLogger.h"
 
 #import <AudioToolbox/AudioToolbox.h>
 #import <QuartzCore/QuartzCore.h>
@@ -58,6 +59,7 @@ static NSArray<NSString *> *YZPriorityEntitlementNames(void) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [YZRuntimeLogger logEvent:@"sheet.view_did_load"];
     self.view.backgroundColor = [UIColor colorWithRed:0.949 green:0.949 blue:0.969 alpha:1.0]; // #F2F2F7
     [self buildMainUI];
     [self refreshAvatar];
@@ -416,7 +418,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
-        cell.textLabel.text = @[@"到期信息", @"常用功能", @"投喂一下"][ip.row];
+        cell.textLabel.text = @[@"到期信息", @"运行日志", @"投喂一下"][ip.row];
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
@@ -560,7 +562,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         else if (ip.row == 1) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
-            [self showToast:@"暂未开放"];
+            [self copyRuntimeFeedback];
         }
         else if (ip.row == 2) [self showRewardSheet];
         return;
@@ -802,6 +804,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 - (void)refreshFollowStatus {
     self.followState = [YZWCServiceCenter brandFollowState:kGHUserName];
     self.isFollowed = (self.followState == 1);
+    [YZRuntimeLogger logEvent:@"sheet.follow_state" info:@{@"state": @(self.followState)}];
     [self updateFollowUI];
 }
 
@@ -825,16 +828,53 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
 - (void)openManualFollowFallback {
     UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
-    if ([YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self]) {
-        return;
-    }
-    [self showToast:@"已复制公众号名称，请搜索关注"];
+    [YZRuntimeLogger logEvent:@"sheet.follow_tap.copy_name"];
+    [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self completion:^(BOOL opened) {
+        [YZRuntimeLogger logEvent:@"sheet.follow_tap.result" info:@{
+            @"opened": @(opened),
+            @"route": [YZWCServiceCenter lastOfficialAccountOpenResult] ?: @"none"
+        }];
+        if (!opened) {
+            [self showToast:@"已复制公众号名称，请搜索关注"];
+        }
+    }];
 }
 
 - (void)handleFollowTap {
     // 底部胶囊以稳定为先：受限账号和部分微信版本直接调用自动关注私有接口可能闪退。
     // 点击仍要作为公众号主页入口；跳转失败时保留复制公众号名称作为兜底。
+    [YZRuntimeLogger logEvent:@"sheet.follow_tap.begin" info:@{@"state": @(self.followState)}];
     [self openManualFollowFallback];
+}
+
+- (NSString *)runtimeFeedbackReport {
+    NSString *followText = @"无法确认";
+    if (self.followState == 1) followText = @"已关注";
+    else if (self.followState == 0) followText = @"未关注";
+
+    NSMutableArray<NSString *> *lines = [NSMutableArray array];
+    [lines addObject:@"小杳知运行反馈"];
+    [lines addObject:[NSString stringWithFormat:@"插件版本: %@", [YZPluginLifecycle sharedInstance].pluginVersion ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"微信版本: %@", [YZWCServiceCenter getWeChatVersion] ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"微信包名: %@", [YZWCServiceCenter getBundleIdentifier] ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"系统版本: iOS %@", [YZWCServiceCenter getSystemVersion] ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"设备标识: %@", [YZWCServiceCenter getDeviceModel] ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"证书类型: %@", [YZWCServiceCenter getCertificateType] ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"证书到期: %@", [YZWCServiceCenter getCertificateExpirationDate] ?: @"未知"]];
+    [lines addObject:[NSString stringWithFormat:@"公众号状态: %@ (%ld)", followText, (long)self.followState]];
+    [lines addObject:[NSString stringWithFormat:@"最近路由: %@", [YZWCServiceCenter lastOfficialAccountOpenResult] ?: @"none"]];
+    [lines addObject:@"---- 最近运行日志 ----"];
+
+    NSString *logText = [YZRuntimeLogger recentLogText];
+    [lines addObject:logText.length > 0 ? logText : @"暂无运行日志"];
+    return [lines componentsJoinedByString:@"\n"];
+}
+
+- (void)copyRuntimeFeedback {
+    [self refreshFollowStatus];
+    UIPasteboard.generalPasteboard.string = [self runtimeFeedbackReport];
+    [YZRuntimeLogger logEvent:@"sheet.runtime_feedback.copied"];
+    [self showToast:@"运行日志已复制，可直接反馈"];
 }
 
 - (void)showToast:(NSString *)msg {
@@ -906,6 +946,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }
     [window addSubview:self.view];
     self.isPresented = YES;
+    [YZRuntimeLogger logEvent:@"sheet.present_in_window"];
     if (shouldTransition) {
         [self endAppearanceTransition];
     }
@@ -945,6 +986,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         [self endAppearanceTransition];
     }
     [self restoreInteractivePopGesture];
+    [YZRuntimeLogger logEvent:@"sheet.dismiss"];
 }
 
 - (void)dismissAnimatedWithCompletion:(void(^)(void))completion {

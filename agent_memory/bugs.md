@@ -11,6 +11,11 @@
 
 ## 风险与待确认
 
+- 新增运行日志只做本地滚动记录与一键复制反馈，不主动上传；后续真机需确认“运行日志”菜单能成功复制报告，且报告里能看到 `official_account.open.*`、`brand_follow_state.*`、`sheet.follow_tap.*` 等关键事件。
+- `Core/YZConfigManager.m` 中配置写入 `plugin_config` 字典，但 `valueForKey:` 单项读取先查同 suite 的顶层 key，再回落到启动时合并后的 `sDefaultConfig`；运行中通过 `setValue:forKey:` 改配置后，当前进程内可能读不到最新值，表现为开关或参数需要重启才生效。
+- 当前 `Guard/YZCrashGuard.m` 的 signal handler 中会调用 Objective-C、日志格式化和文件写入；这类操作在真实 signal 崩溃上下文中不安全，可能让崩溃记录本身变成额外风险。后续建议改为轻量标记/下次启动汇总。
+- 当前隐私声明/报告包含“不发起网络请求”，但 `WeChat/YZWCServiceCenter.m` 的头像兜底逻辑存在 `NSURLSession` 下载头像路径；需要二选一：要么去掉网络下载头像兜底，要么把隐私说明改成“仅在微信沙盒内、为头像兜底读取微信头像 URL”并允许用户关闭。
+- `UI/YZGlassSheetController.m` 主菜单“常用功能”仍展示右箭头，但点击只震动并 toast“暂未开放”；作为重度用户体验会误以为入口损坏，建议改成禁用态、移除箭头，或升级为真实诊断入口。
 - 公众号自动关注依赖微信私有 `CContactMgr`/品牌号相关 selector；已扩大兼容候选并加入 `CContact/MMContact` 参数兜底，但不同微信版本仍可能变更 selector 或内部校验。
 - 新接入的 `BrandDirectlyOperateContactLogic -> tryAddBrandContact:context:` 来自参考插件二进制线索，属于更贴近微信品牌号逻辑的自动关注路径；但上下文字段仍是按可见类名和常见 setter/KVC 保守填充，需要 GitHub Actions 构建和真机验证确认不同微信版本是否命中。
 - `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；当前已恢复首次弹窗调用该方法，但微信服务端是否最终完成关注，需要正常账号真机验证。

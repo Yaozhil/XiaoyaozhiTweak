@@ -1,5 +1,6 @@
 #import "YZPluginLifecycle.h"
 #import "YZGlassSheetController.h"
+#import "YZRuntimeLogger.h"
 #import <UIKit/UIKit.h>
 
 NSString *const kYZPluginDidLoadNotification = @"com.rouneed.xiaoyaozhi.pluginDidLoad";
@@ -53,6 +54,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 - (void)registerWithManager:(NSString *)managerName {
     self.managerName = managerName ?: @"老猫的插件管理";
     NSLog(@"[小杳知] 已注册到 %@", self.managerName);
+    [YZRuntimeLogger logEvent:@"lifecycle.register" info:@{@"manager": self.managerName ?: @""}];
 
     [self pluginDidLoad];
 
@@ -62,6 +64,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 - (void)pluginDidLoad {
     self.isActive = [self storedPluginActive];
     NSLog(@"[小杳知] 插件已加载 v%@", [self pluginVersion]);
+    [YZRuntimeLogger logEvent:@"lifecycle.loaded" info:@{@"active": @(self.isActive), @"version": [self pluginVersion] ?: @""}];
 
     // 监听应用生命周期
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -77,6 +80,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
 - (void)pluginWillUnload {
     self.isActive = NO;
     NSLog(@"[小杳知] 插件即将卸载");
+    [YZRuntimeLogger logEvent:@"lifecycle.unload"];
 
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[NSNotificationCenter defaultCenter] postNotificationName:kYZPluginWillUnloadNotification object:self];
@@ -100,6 +104,7 @@ NSString *const kYZPluginWillEnterForegroundNotification = @"com.rouneed.xiaoyao
     if (_isActive == active) return;
     _isActive = active;
     NSLog(@"[小杳知] 插件状态: %@", active ? @"启用" : @"禁用");
+    [YZRuntimeLogger logEvent:@"lifecycle.active_changed" info:@{@"active": @(active)}];
 
     // 通知老猫插件管理框架状态变更
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];

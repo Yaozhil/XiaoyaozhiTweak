@@ -28,6 +28,14 @@
 /// 打开公众号资料页，供用户手动关注
 + (BOOL)openBrandProfile:(NSString *)brandUserName fromViewController:(UIViewController *)viewController;
 
+/// 打开公众号主页，完成后返回是否命中微信内部路由
++ (void)openBrandProfile:(NSString *)brandUserName
+      fromViewController:(UIViewController *)viewController
+              completion:(void(^)(BOOL opened))completion;
+
+/// 最近一次公众号主页路由结果，用于诊断
++ (NSString *)lastOfficialAccountOpenResult;
+
 /// 获取当前登录用户的微信头像（UIImage）
 + (UIImage *)getSelfAvatar;
 

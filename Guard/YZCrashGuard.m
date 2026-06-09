@@ -1,4 +1,5 @@
 #import "YZCrashGuard.h"
+#import "YZRuntimeLogger.h"
 #import <UIKit/UIKit.h>
 
 static NSMutableDictionary<NSString *, NSMutableArray<NSDate *> *> *sCrashTimestamps = nil;
@@ -19,6 +20,7 @@ static NSUncaughtExceptionHandler *sPreviousExceptionHandler = NULL;
         [self registerUncaughtExceptionHandler];
         [self registerSignalHandlers];
         NSLog(@"[小杳知] 崩溃防护已激活");
+        [YZRuntimeLogger logEvent:@"crash_guard.registered"];
     });
 }
 
@@ -102,6 +104,7 @@ static void YZSignalHandler(int signal) {
 + (void)logCrashContext:(NSString *)location {
     if (!location) return;
     NSLog(@"[小杳知] ⚠️ 异常恢复: %@", location);
+    [YZRuntimeLogger logEvent:@"crash_guard.recovered" info:@{@"location": location}];
 }
 
 #pragma mark - Recursive Crash Detection
@@ -131,6 +134,10 @@ static void YZSignalHandler(int signal) {
             [sDisabledFeatures addObject:location];
             NSLog(@"[小杳知] 🔒 功能已禁用（递归崩溃防护: %@ | %lu次/%0.0fms）",
                   location, (unsigned long)timestamps.count, kCrashWindowSeconds * 1000);
+            [YZRuntimeLogger logEvent:@"crash_guard.disable_feature" info:@{
+                @"location": location,
+                @"count": @(timestamps.count)
+            }];
             return NO;
         }
     }
@@ -143,6 +150,7 @@ static void YZSignalHandler(int signal) {
         [sCrashTimestamps removeAllObjects];
         [sDisabledFeatures removeAllObjects];
         NSLog(@"[小杳知] 崩溃计数器已重置");
+        [YZRuntimeLogger logEvent:@"crash_guard.reset"];
     }
 }
 

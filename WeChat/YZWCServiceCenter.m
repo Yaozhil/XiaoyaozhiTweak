@@ -1,6 +1,7 @@
 #import "YZWCServiceCenter.h"
 #import "YZWCRuntime.h"
 #import "YZCrashGuard.h"
+#import "YZRuntimeLogger.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -11,6 +12,7 @@
 static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
+static NSString *sLastOfficialAccountOpenResult = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124";
 
@@ -324,6 +326,18 @@ static NSArray *YZWeChatURLRouterTargets(void) {
         @"WCURLService",
         @"MMLinkHandler",
         @"WCLinkHandler",
+        @"MMLinkService",
+        @"WCLinkService",
+        @"MMURLRouterService",
+        @"WCURLRouterService",
+        @"MMURLHandlerService",
+        @"WCURLHandlerService",
+        @"MMOpenURLRouter",
+        @"WCOpenURLRouter",
+        @"MMURLDispatcher",
+        @"WCURLDispatcher",
+        @"MMAppLinkService",
+        @"WCAppLinkService",
         @"MMRouter",
         @"WCRouter"
     ];
@@ -371,11 +385,17 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
         @{@"selector": @"openURLString:options:", @"args": @[urlString, options]},
         @{@"selector": @"openURLString:fromScene:", @"args": @[urlString, @124]},
         @{@"selector": @"openURLString:scene:", @"args": @[urlString, @124]},
+        @{@"selector": @"openURLString:fromScene:extraInfo:", @"args": @[urlString, @124, extraInfo]},
+        @{@"selector": @"openURLString:scene:extraInfo:", @"args": @[urlString, @124, extraInfo]},
         @{@"selector": @"openURL:extraInfo:", @"args": @[urlString, extraInfo]},
         @{@"selector": @"openURL:withExtraInfo:", @"args": @[urlString, extraInfo]},
         @{@"selector": @"openURL:options:", @"args": @[urlString, options]},
         @{@"selector": @"openURL:fromScene:", @"args": @[urlString, @124]},
         @{@"selector": @"openURL:scene:", @"args": @[urlString, @124]},
+        @{@"selector": @"handleURLString:fromScene:", @"args": @[urlString, @124]},
+        @{@"selector": @"handleURLString:scene:", @"args": @[urlString, @124]},
+        @{@"selector": @"handleURLString:extraInfo:", @"args": @[urlString, extraInfo]},
+        @{@"selector": @"handleURLString:options:", @"args": @[urlString, options]},
         @{@"selector": @"openURL:", @"args": @[url]},
         @{@"selector": @"openUrl:", @"args": @[url]},
         @{@"selector": @"handleURL:", @"args": @[url]},
@@ -396,8 +416,14 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
             @{@"selector": @"openURL:fromViewController:", @"args": @[url, presenter]},
             @{@"selector": @"openURL:viewController:", @"args": @[url, presenter]},
             @{@"selector": @"openURLString:fromViewController:extraInfo:", @"args": @[urlString, presenter, extraInfo]},
+            @{@"selector": @"openURLString:viewController:extraInfo:", @"args": @[urlString, presenter, extraInfo]},
+            @{@"selector": @"openURLString:fromViewController:scene:", @"args": @[urlString, presenter, @124]},
             @{@"selector": @"openURL:fromViewController:extraInfo:", @"args": @[urlString, presenter, extraInfo]},
-            @{@"selector": @"openURL:fromViewController:extraInfo:", @"args": @[url, presenter, extraInfo]}
+            @{@"selector": @"openURL:viewController:extraInfo:", @"args": @[urlString, presenter, extraInfo]},
+            @{@"selector": @"openURL:fromViewController:extraInfo:", @"args": @[url, presenter, extraInfo]},
+            @{@"selector": @"openURL:viewController:extraInfo:", @"args": @[url, presenter, extraInfo]},
+            @{@"selector": @"handleURLString:fromViewController:", @"args": @[urlString, presenter]},
+            @{@"selector": @"handleURLString:viewController:", @"args": @[urlString, presenter]}
         ]];
     }
 
@@ -406,11 +432,19 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
             NSString *selectorName = attempt[@"selector"];
             NSArray *arguments = attempt[@"args"];
             if (YZInvokeSelectorWithArguments(target, selectorName, arguments)) {
+                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"success:%@:%@", NSStringFromClass([target class]), selectorName];
                 NSLog(@"[小杳知] open official account url via %@ %@", NSStringFromClass([target class]), selectorName);
+                [YZRuntimeLogger logEvent:@"official_account.open.success" info:@{
+                    @"target": NSStringFromClass([target class]) ?: @"unknown",
+                    @"selector": selectorName ?: @"unknown"
+                }];
                 return YES;
             }
         }
     }
+    sLastOfficialAccountOpenResult = @"failed:no-router-hit";
+    NSLog(@"[小杳知] open official account url failed: no router hit");
+    [YZRuntimeLogger logEvent:@"official_account.open.failed" info:@{@"reason": @"no-router-hit"}];
     return NO;
 }
 
@@ -575,11 +609,17 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 }
 
 + (NSInteger)brandFollowState:(NSString *)brandUserName {
-    if (brandUserName.length == 0) return -1;
+    if (brandUserName.length == 0) {
+        [YZRuntimeLogger logEvent:@"brand_follow_state.failed" info:@{@"reason": @"empty"}];
+        return -1;
+    }
 
     @try {
         id contactMgr = [self getContactManager];
-        if (!contactMgr) return -1;
+        if (!contactMgr) {
+            [YZRuntimeLogger logEvent:@"brand_follow_state.failed" info:@{@"reason": @"no-contact-mgr"}];
+            return -1;
+        }
 
         BOOL found = NO;
         BOOL subscribed = YZBoolFromOneArgSelectors(contactMgr, @[
@@ -589,20 +629,31 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
             @"isBizSubscribed:",
             @"isOfficialAccountSubscribed:"
         ], brandUserName, &found);
-        if (found) return subscribed ? 1 : 0;
+        if (found) {
+            NSInteger state = subscribed ? 1 : 0;
+            [YZRuntimeLogger logEvent:@"brand_follow_state.result" info:@{@"state": @(state), @"source": @"manager-selector"}];
+            return state;
+        }
 
         id contact = YZBrandContactFromManager(contactMgr, brandUserName);
-        return YZContactFollowState(contact, brandUserName);
+        NSInteger state = YZContactFollowState(contact, brandUserName);
+        [YZRuntimeLogger logEvent:@"brand_follow_state.result" info:@{@"state": @(state), @"source": contact ? @"contact" : @"no-contact"}];
+        return state;
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"brandFollowState"];
+        [YZRuntimeLogger logEvent:@"brand_follow_state.exception" info:@{@"reason": exception.reason ?: @"unknown"}];
         return -1;
     }
 }
 
 + (BOOL)followBrand:(NSString *)brandUserName {
-    if (brandUserName.length == 0) return NO;
+    if (brandUserName.length == 0) {
+        [YZRuntimeLogger logEvent:@"brand_follow.failed" info:@{@"reason": @"empty"}];
+        return NO;
+    }
 
     @try {
+        [YZRuntimeLogger logEvent:@"brand_follow.begin"];
         NSArray<NSString *> *serviceClasses = @[@"CContactMgr", @"CBrandContactMgr", @"CBrandMgr", @"MMBrandContactMgr"];
         id contactMgr = [self getContactManager];
         id existingContact = YZBrandContactFromManager(contactMgr, brandUserName);
@@ -643,6 +694,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
                     NSArray *arguments = attempt[@"args"];
                     if (YZInvokeSelectorWithArguments(mgr, selectorName, arguments)) {
                         NSLog(@"[小杳知] followBrand hit %@ %@", svcClassName, selectorName);
+                        [YZRuntimeLogger logEvent:@"brand_follow.hit" info:@{@"class": svcClassName ?: @"unknown", @"selector": selectorName ?: @"unknown"}];
                         return YES;
                     }
                 }
@@ -665,6 +717,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
                     NSDictionary *context = @{@"scene": scene, @"fromScene": scene};
                     if (YZInvokeSelectorWithArguments(target, @"tryAddBrandContact:context:", @[argument, context])) {
                         NSLog(@"[小杳知] followBrand hit %@ tryAddBrandContact:context:", className);
+                        [YZRuntimeLogger logEvent:@"brand_follow.hit" info:@{@"class": className ?: @"unknown", @"selector": @"tryAddBrandContact:context:"}];
                         return YES;
                     }
                 }
@@ -672,9 +725,11 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }
 
         NSLog(@"[小杳知] followBrand 未命中任何 selector，userName=%@", brandUserName);
+        [YZRuntimeLogger logEvent:@"brand_follow.failed" info:@{@"reason": @"no-selector-hit"}];
         return NO;
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"followBrand"];
+        [YZRuntimeLogger logEvent:@"brand_follow.exception" info:@{@"reason": exception.reason ?: @"unknown"}];
         return NO;
     }
 }
@@ -746,27 +801,47 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     return YES;
 }
 
++ (void)openBrandWebProfileFromViewController:(UIViewController *)viewController completion:(void(^)(BOOL opened))completion {
+    NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
+    if (!url) {
+        [YZRuntimeLogger logEvent:@"official_account.open.failed" info:@{@"reason": @"bad-url"}];
+        if (completion) completion(NO);
+        return;
+    }
+
+    [YZRuntimeLogger logEvent:@"official_account.open.begin" info:@{@"from": viewController ? NSStringFromClass(viewController.class) : @"nil"}];
+    void (^finish)(BOOL) = ^(BOOL opened) {
+        if (completion) completion(opened);
+    };
+
+    void (^openURL)(void) = ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            BOOL opened = YZOpenURLThroughWeChatRouter(url, [self topMostViewController]);
+            finish(opened);
+        });
+    };
+
+    if (YZShouldDismissBeforePresenting(viewController)) {
+        [YZRuntimeLogger logEvent:@"official_account.open.dismiss_first" info:@{@"from": NSStringFromClass(viewController.class) ?: @"unknown"}];
+        SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
+        if ([viewController respondsToSelector:customDismissSel]) {
+            ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, openURL);
+            return;
+        }
+
+        [viewController dismissViewControllerAnimated:YES completion:openURL];
+        return;
+    }
+
+    openURL();
+}
+
 + (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
     NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
     if (!url) return NO;
 
     if (YZShouldDismissBeforePresenting(viewController)) {
-        __block BOOL opened = NO;
-        void (^openURL)(void) = ^{
-            opened = YZOpenURLThroughWeChatRouter(url, [self topMostViewController]);
-        };
-
-        SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
-        if ([viewController respondsToSelector:customDismissSel]) {
-            ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, openURL);
-            return opened;
-        }
-
-        [viewController dismissViewControllerAnimated:YES completion:^{
-            if (!YZOpenURLThroughWeChatRouter(url, [self topMostViewController])) {
-                UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
-            }
-        }];
+        [self openBrandWebProfileFromViewController:viewController completion:nil];
         return YES;
     }
 
@@ -780,6 +855,26 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         return [self openBrandWebProfileFromViewController:viewController];
     }
     return NO;
+}
+
++ (void)openBrandProfile:(NSString *)brandUserName
+      fromViewController:(UIViewController *)viewController
+              completion:(void(^)(BOOL opened))completion {
+    if (brandUserName.length == 0) {
+        if (completion) completion(NO);
+        return;
+    }
+
+    if ([brandUserName isEqualToString:kYZOfficialAccountUserName]) {
+        [self openBrandWebProfileFromViewController:viewController completion:completion];
+        return;
+    }
+
+    if (completion) completion(NO);
+}
+
++ (NSString *)lastOfficialAccountOpenResult {
+    return sLastOfficialAccountOpenResult ?: @"none";
 }
 
 + (UIImage *)getSelfAvatar {

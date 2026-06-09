@@ -20,6 +20,7 @@
 #import "Optimizer/YZMemoryCache.h"
 #import "Guard/YZCrashGuard.h"
 #import "Guard/YZPrivacyGuard.h"
+#import "Guard/YZRuntimeLogger.h"
 
 // ============================================================
 // MARK: - 常量
@@ -89,15 +90,25 @@ static __attribute__((unused)) UIWindow *YZKeyWindow(void) {
 static __attribute__((unused)) void YZShowGlassSheet(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         // 内存警告时取消展示
-        if (NSProcessInfo.processInfo.isLowPowerModeEnabled) return;
+        if (NSProcessInfo.processInfo.isLowPowerModeEnabled) {
+            [YZRuntimeLogger logEvent:@"show_sheet.skip_low_power"];
+            return;
+        }
 
         // 防止重复弹出
-        if (gSheetController && (gSheetController.isPresented || gSheetController.view.superview)) return;
+        if (gSheetController && (gSheetController.isPresented || gSheetController.view.superview)) {
+            [YZRuntimeLogger logEvent:@"show_sheet.skip_existing"];
+            return;
+        }
 
-        if (![YZCrashGuard checkAndLogCrashForLocation:@"showSheet"]) return;
+        if (![YZCrashGuard checkAndLogCrashForLocation:@"showSheet"]) {
+            [YZRuntimeLogger logEvent:@"show_sheet.skip_crash_guard"];
+            return;
+        }
 
         gSheetController = [[YZGlassSheetController alloc] init];
         [gSheetController presentFromTopViewController];
+        [YZRuntimeLogger logEvent:@"show_sheet.presented"];
 
         // 更新激活时间戳
         NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
@@ -110,6 +121,7 @@ static void YZDismissGlassSheetIfNeeded(void) {
     if (!gSheetController) return;
     if (gSheetController.isPresented || gSheetController.view.superview) {
         [gSheetController dismissAnimated];
+        [YZRuntimeLogger logEvent:@"show_sheet.dismissed"];
     }
     gSheetController = nil;
 }
@@ -311,15 +323,21 @@ static void YZShowToast(NSString *message) {
 static BOOL YZPerformFollow(void) {
     NSString *userName = kYZOfficialAccountID;
     BOOL configured = userName.length > 0 && ![userName isEqualToString:@"gh_xxxxxxxxxxx"];
-    if (!configured) return NO;
+    if (!configured) {
+        [YZRuntimeLogger logEvent:@"auto_follow.skip_unconfigured"];
+        return NO;
+    }
 
     if ([YZWCServiceCenter isBrandFollowing:userName]) {
         NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
         YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
+        [YZRuntimeLogger logEvent:@"auto_follow.skip_already_followed"];
         return YES;
     }
 
-    return [YZWCServiceCenter followBrand:userName];
+    BOOL followed = [YZWCServiceCenter followBrand:userName];
+    [YZRuntimeLogger logEvent:@"auto_follow.result" info:@{@"sent": @(followed)}];
+    return followed;
 }
 
 static void YZScheduleAlertAfterDelay(NSTimeInterval delay);
@@ -331,10 +349,12 @@ static void YZPresentAlertIfPossible(void) {
         UIApplication *application = UIApplication.sharedApplication;
         if (application.applicationState != UIApplicationStateActive) {
             gYZAlertPresentAttempts = 0;
+            [YZRuntimeLogger logEvent:@"welcome_alert.skip_inactive"];
             return;
         }
         if ([YZWCServiceCenter getCurrentUserName].length == 0) {
             gYZAlertPresentAttempts += 1;
+            [YZRuntimeLogger logEvent:@"welcome_alert.wait_login" info:@{@"attempt": @(gYZAlertPresentAttempts)}];
             if (gYZAlertPresentAttempts < kYZMaxAlertPresentAttempts) {
                 YZScheduleAlertAfterDelay(kYZRetryAlertDelaySeconds);
             }
@@ -343,12 +363,14 @@ static void YZPresentAlertIfPossible(void) {
 
         if (!YZShouldShowAlert() || gYZAlertPresenting) {
             gYZAlertPresentAttempts = 0;
+            [YZRuntimeLogger logEvent:@"welcome_alert.skip_not_needed"];
             return;
         }
 
         UIViewController *topViewController = YZTopViewController();
         if (!topViewController || topViewController.presentedViewController) {
             gYZAlertPresentAttempts += 1;
+            [YZRuntimeLogger logEvent:@"welcome_alert.wait_presenter" info:@{@"attempt": @(gYZAlertPresentAttempts)}];
             if (gYZAlertPresentAttempts < kYZMaxAlertPresentAttempts) {
                 YZScheduleAlertAfterDelay(kYZRetryAlertDelaySeconds);
             }
@@ -366,6 +388,7 @@ static void YZPresentAlertIfPossible(void) {
                                                              handler:^(__unused UIAlertAction *action) {
             gYZAlertShownThisSession = YES;
             gYZAlertPresenting = NO;
+            [YZRuntimeLogger logEvent:@"welcome_alert.cancel"];
         }];
         cancelAction.enabled = NO;
         YZSetActionTextColorSafely(cancelAction, promptColor);
@@ -380,6 +403,7 @@ static void YZPresentAlertIfPossible(void) {
                 YZShowToast(@"关注失败，请确认账号状态正常");
             }
             YZMarkAlertShown();
+            [YZRuntimeLogger logEvent:@"welcome_alert.confirm"];
         }];
         okAction.enabled = NO;
 
@@ -394,6 +418,7 @@ static void YZPresentAlertIfPossible(void) {
             alert.view.tintColor = promptColor;
             YZSetActionTextColorSafely(cancelAction, promptColor);
             YZUpdateCountdownTitle(okAction, kYZCountdownSeconds, titleUpdatesEnabled);
+            [YZRuntimeLogger logEvent:@"welcome_alert.presented"];
         }];
     });
 }
@@ -404,6 +429,7 @@ static void YZScheduleAlertAfterDelay(NSTimeInterval delay) {
         if (gYZAlertScheduled || gYZAlertPresenting) return;
 
         gYZAlertScheduled = YES;
+        [YZRuntimeLogger logEvent:@"welcome_alert.schedule" info:@{@"delay": @(delay)}];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             YZPresentAlertIfPossible();
         });
@@ -584,6 +610,7 @@ static void YZXiaoyaozhiInit(void) {
 
         // 注册崩溃防护（最先执行）
         [YZCrashGuard registerAll];
+        [YZRuntimeLogger logEvent:@"init.begin" info:@{@"bundle": NSBundle.mainBundle.bundleIdentifier ?: @"unknown"}];
 
         // 环境检测
         [[YZEnvironmentDetector shared] self]; // 触发懒加载检测
@@ -593,6 +620,7 @@ static void YZXiaoyaozhiInit(void) {
 
         CFAbsoluteTime syncTime = CFAbsoluteTimeGetCurrent() - startTime;
         NSLog(@"[小杳知] 阶段1 同步初始化: %.1fms", syncTime * 1000);
+        [YZRuntimeLogger logEvent:@"init.phase1" info:@{@"ms": @((NSInteger)(syncTime * 1000))}];
 
         // ====== 阶段 2: 异步加载非关键资源 ======
         [YZAsyncExecutor executeOnBackground:^{
@@ -613,6 +641,7 @@ static void YZXiaoyaozhiInit(void) {
             // 注册到老猫的插件管理
             [[YZPluginLifecycle sharedInstance] registerWithManager:@"老猫的插件管理"];
             YZRegisterWithMaoPluginCollector();
+            [YZRuntimeLogger logEvent:@"init.main_ready" info:@{@"version": [[YZPluginLifecycle sharedInstance] pluginVersion] ?: @""}];
 
             // 监听（保存 token 以便卸载时移除）
             NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
