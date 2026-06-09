@@ -2,6 +2,7 @@
 
 ## 已知问题
 
+- 用户真机反馈：倒计时结束点击“已知晓”直接闪退，手机系统里找不到 ips；用户提供本地日志后确认崩溃为 `NSInvalidArgumentException`：`-[__NSDictionaryI subscribeBizLive]: unrecognized selector`，触发点在自动关注 `tryAddBrandContact:context:` 附近。根因是把普通 `NSDictionary` 当成微信品牌号关注上下文传入，微信内部期望上下文对象响应 `subscribeBizLive`。当前已热修为只使用真实上下文类且必须响应 `subscribeBizLive`，否则不调用高风险自动关注。
 - 用户真机反馈：点击“投喂一下”曾直接黑屏；原因指向菜单入口 present 微信私有扫码控制器后未成功跳转。当前已按用户要求移除所有可见赞赏行为，仅保留震动。
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。

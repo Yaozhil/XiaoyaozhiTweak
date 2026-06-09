@@ -14,6 +14,8 @@
 
 ## 当前状态
 
+- 用户提供本地 `xiaoyaozhi_crash.log` 与 `xiaoyaozhi_runtime.log`，已定位首次弹窗“已知晓”点击后闪退根因：运行日志停在 `brand_follow.begin`，崩溃日志为 `-[__NSDictionaryI subscribeBizLive]: unrecognized selector`，说明自动关注的 `tryAddBrandContact:context:` 不能传普通 `NSDictionary` 上下文，微信内部期望的是带 `subscribeBizLive` 等方法的品牌号关注上下文对象。
+- 已做本地热修：确认按钮先 `YZMarkAlertShown()` 并同步写入 `welcome_alert.confirm`，再延迟 1 秒执行自动关注；自动关注移除旧的 `CContactMgr/CBrandMgr` 泛 selector 兜底，不再传疑似字典 contact，只传公众号 ID 字符串；`tryAddBrandContact:context:` 改为尝试创建 `BrandDirectlyAddContactContext/WCBrandDirectlyAddContactContext/BrandAddContactContext/WCBrandAddContactContext`，且要求对象响应 `subscribeBizLive`，否则跳过并失败提示，避免再次因字典上下文闪退。
 - 已完成一次“高频重度用户视角”的源码体验评审：当前最值得优化的方向不是继续堆新入口，而是补齐诊断与反馈闭环、明确占位功能状态、降低私有 API 跳转失败后的不可见风险、统一隐私/网络声明与真实行为。
 - 评审发现可优先落地的产品改进：把“常用功能”占位入口改成真实可用的“诊断与反馈/复制诊断信息”；在诊断信息里展示公众号路由命中类/selector、最近关注状态、微信/系统/设备/证书信息；在首次弹窗和关注失败 toast 中给出更明确的下一步。
 - 本次复查补充：配置写入和读取路径不完全一致，`YZConfigManager` 写入 `plugin_config` 字典但单项读取先查顶层 key，运行中改配置可能不能即时生效；版本号和公众号 ID/主页 URL 仍分散在多个文件，后续应优先收敛成单一元信息源或构建校验。
@@ -57,6 +59,7 @@
 
 ## 下一步
 
+- 需要构建新包真机验证：点击首次弹窗“已知晓”应先关闭/标记已显示，不应再当场闪退；若微信存在可用品牌号上下文类，日志应出现 `brand_follow.context`、`brand_follow.try` 和可能的 `brand_follow.hit`；若不存在，应出现 `brand_follow.context_missing` 或 `brand_follow.failed missing-context` 并 toast 关注失败。
 - 推送后等待 GitHub Actions 构建结果。
 - 真机验证首次弹窗倒计时、确认按钮、自动关注 selector 是否命中、失败提示；底部胶囊点击后应复制公众号名称，并尝试跳转公众号主页。
 - 真机复现问题后点击主菜单“运行日志”，应 toast“运行日志已复制，可直接反馈”；把剪贴板内容反馈回来即可查看最近路由命中、关注状态判断和弹层生命周期。
@@ -69,6 +72,7 @@
 
 ## 验证方式
 
+- 本次根据真机日志修复自动关注闪退后已运行 `git diff --check`，无空白错误；已确认自动关注源码中不再包含旧的 `addBrandContactByUserName`、`subscribeBrand`、`followBrand:scene`、`addContact:scene` 等泛 selector 候选。
 - 已运行 `git diff --check`，无空白错误。
 - 本次底部胶囊改动后已再次运行 `git diff --check`，无空白错误；已搜索活跃代码，未发现 `weixin://`、`WKWebView`、`MMWebView`、`WCWebView`、`ContactInfoViewController`、`Universal Link`、`openWebView`、`loadURL`、`jump` 等已禁用/高风险路径。
 - 已搜索活跃代码，未发现旧赞赏弹窗/旧赞赏扫码 provider/旧小游戏/外部 `weixin://`/自建 `WKWebView`/直接构造 `MMWebViewController/WCWebViewController`/旧版本号残留。

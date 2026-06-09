@@ -315,6 +315,56 @@ static BOOL YZAddUniqueTarget(NSMutableArray *targets, id target) {
     return YES;
 }
 
+static void YZConfigureBrandAddContext(id context, NSNumber *scene) {
+    if (!context) return;
+
+    NSDictionary<NSString *, id> *values = @{
+        @"scene": scene ?: @3,
+        @"fromScene": scene ?: @3,
+        @"enterScene": scene ?: @3,
+        @"contactScene": scene ?: @3,
+        @"subscribeBizLive": @NO
+    };
+
+    for (NSString *key in values) {
+        NSString *setter = [NSString stringWithFormat:@"set%@%@:",
+                            [[key substringToIndex:1] uppercaseString],
+                            [key substringFromIndex:1]];
+        YZInvokeSelectorWithArguments(context, setter, @[values[key]]);
+        @try {
+            [context setValue:values[key] forKey:key];
+        } @catch (__unused NSException *exception) {
+        }
+    }
+}
+
+static id YZBrandAddContext(NSNumber *scene) {
+    NSArray<NSString *> *contextClassNames = @[
+        @"BrandDirectlyAddContactContext",
+        @"WCBrandDirectlyAddContactContext",
+        @"BrandAddContactContext",
+        @"WCBrandAddContactContext"
+    ];
+
+    for (NSString *className in contextClassNames) {
+        Class contextClass = NSClassFromString(className);
+        if (!contextClass) continue;
+
+        id context = [[contextClass alloc] init];
+        if (!context) continue;
+        if (![context respondsToSelector:NSSelectorFromString(@"subscribeBizLive")]) {
+            [YZRuntimeLogger logEventSync:@"brand_follow.context_skip" info:@{@"class": className, @"reason": @"no-subscribeBizLive"}];
+            continue;
+        }
+        YZConfigureBrandAddContext(context, scene);
+        [YZRuntimeLogger logEventSync:@"brand_follow.context" info:@{@"class": className}];
+        return context;
+    }
+
+    [YZRuntimeLogger logEventSync:@"brand_follow.context_missing" info:nil];
+    return nil;
+}
+
 static NSArray *YZWeChatURLRouterTargets(void) {
     NSArray<NSString *> *classNames = @[
         @"MMURLHandler",
@@ -653,52 +703,13 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     }
 
     @try {
-        [YZRuntimeLogger logEvent:@"brand_follow.begin"];
-        NSArray<NSString *> *serviceClasses = @[@"CContactMgr", @"CBrandContactMgr", @"CBrandMgr", @"MMBrandContactMgr"];
-        id contactMgr = [self getContactManager];
-        id existingContact = YZBrandContactFromManager(contactMgr, brandUserName);
-        NSArray *argumentCandidates = existingContact ? @[brandUserName, existingContact] : @[brandUserName];
+        [YZRuntimeLogger logEventSync:@"brand_follow.begin" info:nil];
+        NSArray *argumentCandidates = @[brandUserName];
         NSNumber *scene = @3;
-        NSNumber *enterType = @0;
-
-        for (NSString *svcClassName in serviceClasses) {
-            id mgr = [svcClassName isEqualToString:@"CContactMgr"] ? contactMgr : [YZWCRuntime getService:svcClassName];
-            if (!mgr) continue;
-
-            for (id argument in argumentCandidates) {
-                NSArray<NSDictionary<NSString *, id> *> *attempts = @[
-                    @{@"selector": @"addBrandContactByUserName:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"addBrandContact:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"followBrandContact:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"followBrand:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"subscribeBrandContact:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"subscribeBrand:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"addBrand:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"addContact:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"followContact:scene:", @"args": @[argument, scene]},
-                    @{@"selector": @"addBrandContact:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"followBrandContact:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"followBrand:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"subscribeBrandContact:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"subscribeBrand:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"addBrand:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"addContact:scene:enterType:", @"args": @[argument, scene, enterType]},
-                    @{@"selector": @"followBrandContact:", @"args": @[argument]},
-                    @{@"selector": @"subscribeBrandContact:", @"args": @[argument]},
-                    @{@"selector": @"addBrandContact:", @"args": @[argument]},
-                    @{@"selector": @"addContact:", @"args": @[argument]}
-                ];
-
-                for (NSDictionary<NSString *, id> *attempt in attempts) {
-                    NSString *selectorName = attempt[@"selector"];
-                    NSArray *arguments = attempt[@"args"];
-                    if (YZInvokeSelectorWithArguments(mgr, selectorName, arguments)) {
-                        NSLog(@"[小杳知] followBrand hit %@ %@", svcClassName, selectorName);
-                        [YZRuntimeLogger logEvent:@"brand_follow.hit" info:@{@"class": svcClassName ?: @"unknown", @"selector": selectorName ?: @"unknown"}];
-                        return YES;
-                    }
-                }
-            }
+        id context = YZBrandAddContext(scene);
+        if (!context) {
+            [YZRuntimeLogger logEventSync:@"brand_follow.failed" info:@{@"reason": @"missing-context"}];
+            return NO;
         }
 
         NSArray<NSString *> *logicClasses = @[@"BrandDirectlyOperateContactLogic", @"WCBrandDirectlyOperateContactLogic"];
@@ -714,10 +725,14 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
             for (id target in targets) {
                 for (id argument in argumentCandidates) {
-                    NSDictionary *context = @{@"scene": scene, @"fromScene": scene};
+                    [YZRuntimeLogger logEventSync:@"brand_follow.try" info:@{
+                        @"class": className ?: @"unknown",
+                        @"argument": NSStringFromClass([argument class]) ?: @"unknown",
+                        @"context": NSStringFromClass([context class]) ?: @"unknown"
+                    }];
                     if (YZInvokeSelectorWithArguments(target, @"tryAddBrandContact:context:", @[argument, context])) {
                         NSLog(@"[小杳知] followBrand hit %@ tryAddBrandContact:context:", className);
-                        [YZRuntimeLogger logEvent:@"brand_follow.hit" info:@{@"class": className ?: @"unknown", @"selector": @"tryAddBrandContact:context:"}];
+                        [YZRuntimeLogger logEventSync:@"brand_follow.hit" info:@{@"class": className ?: @"unknown", @"selector": @"tryAddBrandContact:context:"}];
                         return YES;
                     }
                 }
@@ -725,11 +740,11 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         }
 
         NSLog(@"[小杳知] followBrand 未命中任何 selector，userName=%@", brandUserName);
-        [YZRuntimeLogger logEvent:@"brand_follow.failed" info:@{@"reason": @"no-selector-hit"}];
+        [YZRuntimeLogger logEventSync:@"brand_follow.failed" info:@{@"reason": @"no-selector-hit"}];
         return NO;
     } @catch (NSException *exception) {
         [YZCrashGuard logCrashContext:@"followBrand"];
-        [YZRuntimeLogger logEvent:@"brand_follow.exception" info:@{@"reason": exception.reason ?: @"unknown"}];
+        [YZRuntimeLogger logEventSync:@"brand_follow.exception" info:@{@"reason": exception.reason ?: @"unknown"}];
         return NO;
     }
 }

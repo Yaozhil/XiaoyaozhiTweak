@@ -41,39 +41,54 @@ static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
     return [NSString stringWithFormat:@" %@", info];
 }
 
-+ (void)appendLine:(NSString *)line {
-    if (line.length == 0) return;
++ (void)writeLineToFile:(NSString *)line {
+    @autoreleasepool {
+        NSString *path = [self logPath];
+        NSString *entry = [line stringByAppendingString:@"\n"];
+        NSData *data = [entry dataUsingEncoding:NSUTF8StringEncoding];
 
+        if (![NSFileManager.defaultManager fileExistsAtPath:path]) {
+            [data writeToFile:path atomically:YES];
+        } else {
+            NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+            [handle seekToEndOfFile];
+            [handle writeData:data];
+            [handle closeFile];
+        }
+
+        NSDictionary *attr = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+        unsigned long long size = [attr[NSFileSize] unsignedLongLongValue];
+        if (size <= kYZRuntimeLogMaxFileSize) return;
+
+        NSData *fullData = [NSData dataWithContentsOfFile:path];
+        if (fullData.length <= kYZRuntimeLogMaxFileSize) return;
+        NSData *tail = [fullData subdataWithRange:NSMakeRange(fullData.length - kYZRuntimeLogMaxFileSize, kYZRuntimeLogMaxFileSize)];
+        [tail writeToFile:path atomically:YES];
+    }
+}
+
++ (void)rememberLine:(NSString *)line {
     @synchronized (sYZRuntimeLogBuffer) {
         [sYZRuntimeLogBuffer addObject:line];
         while (sYZRuntimeLogBuffer.count > kYZRuntimeLogMaxEntries) {
             [sYZRuntimeLogBuffer removeObjectAtIndex:0];
         }
     }
+}
+
++ (void)appendLine:(NSString *)line sync:(BOOL)sync {
+    if (line.length == 0) return;
+
+    [self rememberLine:line];
+
+    if (sync) {
+        [self writeLineToFile:line];
+        return;
+    }
 
     dispatch_async(sYZRuntimeLogQueue, ^{
         @autoreleasepool {
-            NSString *path = [self logPath];
-            NSString *entry = [line stringByAppendingString:@"\n"];
-            NSData *data = [entry dataUsingEncoding:NSUTF8StringEncoding];
-
-            if (![NSFileManager.defaultManager fileExistsAtPath:path]) {
-                [data writeToFile:path atomically:YES];
-            } else {
-                NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
-                [handle seekToEndOfFile];
-                [handle writeData:data];
-                [handle closeFile];
-            }
-
-            NSDictionary *attr = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
-            unsigned long long size = [attr[NSFileSize] unsignedLongLongValue];
-            if (size <= kYZRuntimeLogMaxFileSize) return;
-
-            NSData *fullData = [NSData dataWithContentsOfFile:path];
-            if (fullData.length <= kYZRuntimeLogMaxFileSize) return;
-            NSData *tail = [fullData subdataWithRange:NSMakeRange(fullData.length - kYZRuntimeLogMaxFileSize, kYZRuntimeLogMaxFileSize)];
-            [tail writeToFile:path atomically:YES];
+            [self writeLineToFile:line];
         }
     });
 }
@@ -100,7 +115,28 @@ static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
                       event,
                       [self stringFromInfo:safeInfo]];
     NSLog(@"[小杳知][运行日志] %@", line);
-    [self appendLine:line];
+    [self appendLine:line sync:NO];
+}
+
++ (void)logEventSync:(NSString *)event info:(NSDictionary *)info {
+    if (event.length == 0) return;
+
+    NSMutableDictionary *safeInfo = [NSMutableDictionary dictionary];
+    [info enumerateKeysAndObjectsUsingBlock:^(id key, id obj, __unused BOOL *stop) {
+        if (!key || !obj || obj == (id)kCFNull) return;
+        if ([NSJSONSerialization isValidJSONObject:@{key: obj}]) {
+            safeInfo[key] = obj;
+        } else {
+            safeInfo[key] = [obj description] ?: @"";
+        }
+    }];
+
+    NSString *line = [NSString stringWithFormat:@"[%@] %@%@",
+                      [self timestampString],
+                      event,
+                      [self stringFromInfo:safeInfo]];
+    NSLog(@"[小杳知][运行日志] %@", line);
+    [self appendLine:line sync:YES];
 }
 
 + (NSString *)recentLogText {

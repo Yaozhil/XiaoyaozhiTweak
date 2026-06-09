@@ -5,6 +5,7 @@
 
 + (void)logEvent:(NSString *)event;
 + (void)logEvent:(NSString *)event info:(NSDictionary *)info;
++ (void)logEventSync:(NSString *)event info:(NSDictionary *)info;
 + (NSString *)recentLogText;
 + (void)clearLogs;
 

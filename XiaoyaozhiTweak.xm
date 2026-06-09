@@ -340,6 +340,16 @@ static BOOL YZPerformFollow(void) {
     return followed;
 }
 
+static void YZScheduleDeferredFollowAfterAlert(void) {
+    [YZRuntimeLogger logEventSync:@"auto_follow.deferred_schedule" info:@{@"delay": @1.0}];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [YZRuntimeLogger logEventSync:@"auto_follow.deferred_begin" info:nil];
+        if (!YZPerformFollow()) {
+            YZShowToast(@"关注失败，请确认账号状态正常");
+        }
+    });
+}
+
 static void YZScheduleAlertAfterDelay(NSTimeInterval delay);
 
 static void YZPresentAlertIfPossible(void) {
@@ -399,11 +409,9 @@ static void YZPresentAlertIfPossible(void) {
             gYZAlertPresenting = NO;
             gYZCountdownCancelled = YES;
 
-            if (!YZPerformFollow()) {
-                YZShowToast(@"关注失败，请确认账号状态正常");
-            }
             YZMarkAlertShown();
-            [YZRuntimeLogger logEvent:@"welcome_alert.confirm"];
+            [YZRuntimeLogger logEventSync:@"welcome_alert.confirm" info:@{@"action": @"defer-auto-follow"}];
+            YZScheduleDeferredFollowAfterAlert();
         }];
         okAction.enabled = NO;
 
