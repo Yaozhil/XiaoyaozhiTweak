@@ -137,6 +137,63 @@ static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
     return strcmp(returnType, @encode(void)) == 0;
 }
 
+static id YZCreateMessageWrap(NSInteger messageType) {
+    Class wrapClass = NSClassFromString(@"CMessageWrap");
+    if (!wrapClass) return nil;
+
+    SEL initSelector = NSSelectorFromString(@"initWithMsgType:");
+    id wrap = [wrapClass alloc];
+    if ([wrap respondsToSelector:initSelector]) {
+        @try {
+            return ((id (*)(id, SEL, NSInteger))objc_msgSend)(wrap, initSelector, messageType);
+        } @catch (NSException *exception) {
+            [YZRuntimeLogger logEventSync:@"official_account.message.wrap_exception" info:@{@"reason": exception.reason ?: @"unknown"}];
+            return nil;
+        }
+    }
+
+    @try {
+        return [[wrapClass alloc] init];
+    } @catch (NSException *exception) {
+        [YZRuntimeLogger logEventSync:@"official_account.message.wrap_exception" info:@{@"reason": exception.reason ?: @"unknown"}];
+        return nil;
+    }
+}
+
+static void YZSetObjectIfPossible(id target, NSString *key, id value) {
+    if (!target || key.length == 0 || !value) return;
+
+    NSString *setterName = [NSString stringWithFormat:@"set%@%@:",
+                            [[key substringToIndex:1] uppercaseString],
+                            key.length > 1 ? [key substringFromIndex:1] : @""];
+    SEL setter = NSSelectorFromString(setterName);
+    @try {
+        if ([target respondsToSelector:setter]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(target, setter, value);
+            return;
+        }
+        [target setValue:value forKey:key];
+    } @catch (__unused NSException *exception) {
+    }
+}
+
+static void YZSetIntegerIfPossible(id target, NSString *key, NSInteger value) {
+    if (!target || key.length == 0) return;
+
+    NSString *setterName = [NSString stringWithFormat:@"set%@%@:",
+                            [[key substringToIndex:1] uppercaseString],
+                            key.length > 1 ? [key substringFromIndex:1] : @""];
+    SEL setter = NSSelectorFromString(setterName);
+    @try {
+        if ([target respondsToSelector:setter]) {
+            ((void (*)(id, SEL, NSInteger))objc_msgSend)(target, setter, value);
+            return;
+        }
+        [target setValue:@(value) forKey:key];
+    } @catch (__unused NSException *exception) {
+    }
+}
+
 static NSArray<NSString *> *YZMethodNamesForClass(Class cls, BOOL instanceMethods, NSUInteger limit) {
     if (!cls || limit == 0) return @[];
 
@@ -642,6 +699,55 @@ static BOOL YZSendOfficialAccountLinkMessage(void) {
         currentUserName = ((NSString *(*)(id, SEL))objc_msgSend)(serviceClass, currentUserSelector);
     }
     NSArray<NSString *> *targets = @[@"filehelper", currentUserName ?: @""];
+    NSMutableArray<NSDictionary<NSString *, id> *> *messageWrapAttempts = [NSMutableArray array];
+    for (NSString *target in targets) {
+        if (target.length == 0) continue;
+
+        id wrap = YZCreateMessageWrap(1);
+        if (!wrap) continue;
+
+        NSInteger now = (NSInteger)[[NSDate date] timeIntervalSince1970];
+        YZSetObjectIfPossible(wrap, @"m_nsFromUsr", currentUserName.length > 0 ? currentUserName : target);
+        YZSetObjectIfPossible(wrap, @"m_nsToUsr", target);
+        YZSetObjectIfPossible(wrap, @"m_nsContent", linkText);
+        YZSetObjectIfPossible(wrap, @"m_nsRealChatUsr", target);
+        YZSetIntegerIfPossible(wrap, @"m_uiMessageType", 1);
+        YZSetIntegerIfPossible(wrap, @"m_uiStatus", 3);
+        YZSetIntegerIfPossible(wrap, @"m_uiCreateTime", now);
+
+        [messageWrapAttempts addObject:@{@"target": target, @"wrap": wrap}];
+    }
+
+    NSArray<NSString *> *addMsgSelectors = @[
+        @"AddMsg:MsgWrap:",
+        @"addMsg:msgWrap:",
+        @"addMsg:MsgWrap:",
+        @"AsyncOnAddMsg:MsgWrap:"
+    ];
+
+    for (NSDictionary<NSString *, id> *item in messageWrapAttempts) {
+        NSString *target = item[@"target"];
+        id wrap = item[@"wrap"];
+        for (NSString *selectorName in addMsgSelectors) {
+            if (![messageMgr respondsToSelector:NSSelectorFromString(selectorName)]) continue;
+
+            [YZRuntimeLogger logEventSync:@"official_account.message.try" info:@{
+                @"selector": selectorName ?: @"unknown",
+                @"target": target ?: @"unknown",
+                @"mode": @"wrap"
+            }];
+            if (YZInvokeSelectorWithArguments(messageMgr, selectorName, @[target, wrap])) {
+                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"message:%@", target];
+                [YZRuntimeLogger logEventSync:@"official_account.message.hit" info:@{
+                    @"selector": selectorName ?: @"unknown",
+                    @"target": target ?: @"unknown",
+                    @"mode": @"wrap"
+                }];
+                return YES;
+            }
+        }
+    }
+
     NSArray<NSDictionary<NSString *, id> *> *attempts = @[
         @{@"selector": @"sendMsg:toContactUsrName:", @"extra": @[]},
         @{@"selector": @"sendMsg:toContactUsrName:uiMsgType:", @"extra": @[@1]},
