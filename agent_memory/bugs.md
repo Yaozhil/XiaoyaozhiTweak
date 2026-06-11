@@ -16,6 +16,7 @@
 - 黑屏与闪退均已止住后，底部仍不跳转，固定探针显示可用线索集中在 `WebViewA8KeyLogicImpl`。当前已增加固定 A8Key 尝试，但其内部是否需要真实 WebView 上下文仍待真机确认；若只记录 `a8key.failed` 或命中后仍不跳，需要继续寻找 `LinkTextParser/onLinkClicked` 所属上下文。
 - A8Key 尝试真机日志显示 `hasUrlPermission=false` 后调用 `goToURL:withCustomerCookies:` 导致点击闪退，当前已撤销 A8Key 实际调用。后续实现跳转必须避开高层 URL router、WebView VC、A8Key 直接调用，转向 `LinkTextParser`/真实点击上下文。
 - 微信对话框内点击同一 mp 链接可跳转，说明裸 URL 路线缺少消息上下文。曾尝试 `CMessageMgr/CMessageWrap/AddMsg` 证明消息链路可命中，但这会在文件传输助手产生客户可见消息，用户明确指出像账号异常；当前已撤销该方案，后续不得把可见发消息作为客户版公众号入口。
+- 为避开敏感/高风险路径，当前底部公众号排查只允许固定类名的只读 Link/Text 探针与真实链接点击 hook；不得再调用 A8Key/WebView/AppDelegate/外部 scheme，也不得读取或记录聊天内容、URL 明文、联系人列表或发送消息。
 - 底部胶囊曾只显示“已复制公众号名称，请搜索关注”，新增判断显示原因可能是 `viewController.navigationController` 和微信根导航均未命中，旧代码因此完全跳过资料页创建；当前已增加无 pushNav 时的 present 兜底。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 

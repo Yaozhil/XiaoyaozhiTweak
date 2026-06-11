@@ -33,6 +33,7 @@
 - 用户指出微信对话框里直接点击同一 mp 链接可以跳公众号主页，说明正确方向是微信消息链接链路，而不是裸 URL/WebView/A8Key。当前新增两步：`route_probe` 输出 `LinkTextParser` 固定类实例/类方法列表；无安全路由时尝试通过 `CMessageMgr` 的 `sendMsg:toContactUsrName:` 等候选把公众号主页链接发到 `filehelper`/当前用户，若命中记录 `official_account.message.hit` 和 `route=message:<target>`，为后续基于真实消息对象触发链接点击做准备。
 - 最新日志显示 `LinkTextParser` 只提供解析/富文本方法，`CMessageMgr` 常见 `sendMsg...` selector 未命中。已改为更贴近微信消息系统的 `CMessageWrap` 路线：构造文本消息 wrap，填充 `m_nsFromUsr/m_nsToUsr/m_nsContent/m_uiMessageType/m_uiStatus/m_uiCreateTime`，再尝试 `CMessageMgr AddMsg:MsgWrap:` / `addMsg:msgWrap:` / `AsyncOnAddMsg:MsgWrap:` 投递到 `filehelper` 或当前用户；命中日志为 `official_account.message.hit {"mode":"wrap"}`。
 - 用户通过文件反馈确认 `CMessageWrap + AddMsg:MsgWrap:` 可命中并产生 `message:filehelper`，但用户指出该方案会让客户看到文件传输助手被自动写入链接，体验像账号异常。已撤销整条可见消息兜底：删除 `CMessageWrap/AddMsg` 投递、自动打开 `filehelper` 会话和对应 toast；底部胶囊无安全路由时只复制公众号名称与主页链接并记录 `failed:no-safe-route`，不再替用户发送任何消息。
+- 用户最新反馈显示止损版已稳定：底部点击不黑屏、不闪退、不发文件传输助手消息，但仍返回 `failed:no-safe-route`；首次弹窗自动关注继续命中 `BrandDirectlyOperateContactLogic tryAddBrandContact:context:`。已新增非敏感链接点击探针：`route_probe` 只记录固定 Link/Text 相关类和方法，不再输出 WebView/A8Key/AppDelegate 细节；同时 hook `MMRichTextCoverView onLinkClicked:withRect:`，只在用户真实点击微信原生链接时记录处理类、参数类和顶层 VC 类，不记录 URL/聊天内容。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。

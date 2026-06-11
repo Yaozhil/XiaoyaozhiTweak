@@ -154,6 +154,80 @@ static NSArray<NSString *> *YZMethodNamesForClass(Class cls, BOOL instanceMethod
     return names;
 }
 
+static BOOL YZMethodNameMatchesAnyNeedle(NSString *methodName, NSArray<NSString *> *needles) {
+    if (methodName.length == 0) return NO;
+    for (NSString *needle in needles) {
+        if (needle.length == 0) continue;
+        if ([methodName rangeOfString:needle options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static NSArray<NSString *> *YZFilteredMethodNamesForClass(Class cls, BOOL instanceMethods, NSUInteger limit, NSArray<NSString *> *needles) {
+    if (!cls || limit == 0) return @[];
+
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(instanceMethods ? cls : object_getClass(cls), &count);
+    if (!methods) return @[];
+
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (unsigned int index = 0; index < count && names.count < limit; index++) {
+        SEL selector = method_getName(methods[index]);
+        NSString *name = NSStringFromSelector(selector);
+        if (YZMethodNameMatchesAnyNeedle(name, needles)) {
+            [names addObject:name];
+        }
+    }
+    free(methods);
+    return names;
+}
+
+static NSDictionary *YZLinkClickClassProbe(void) {
+    NSArray<NSString *> *classNames = @[
+        @"MMRichTextCoverView",
+        @"RichTextView",
+        @"MMRichTextView",
+        @"LinkTextView",
+        @"MMLinkTextView",
+        @"WCLinkTextView",
+        @"TextMessageNodeView",
+        @"MessageNodeView",
+        @"BaseMessageNodeView",
+        @"BaseMsgContentViewController",
+        @"BaseMsgViewController",
+        @"ChatTableViewCell",
+        @"MMTableViewCell"
+    ];
+    NSArray<NSString *> *needles = @[
+        @"Link",
+        @"URL",
+        @"Interact",
+        @"Click",
+        @"Parser"
+    ];
+
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    for (NSString *className in classNames) {
+        Class cls = NSClassFromString(className);
+        if (!cls) continue;
+
+        NSArray<NSString *> *instanceMethods = YZFilteredMethodNamesForClass(cls, YES, 30, needles);
+        NSArray<NSString *> *classMethods = YZFilteredMethodNamesForClass(cls, NO, 20, needles);
+        if (instanceMethods.count == 0 && classMethods.count == 0) {
+            result[className] = @{@"exists": @YES};
+            continue;
+        }
+
+        result[className] = @{
+            @"instance": instanceMethods,
+            @"class": classMethods
+        };
+    }
+    return result;
+}
+
 static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
     for (NSString *selectorName in selectorNames) {
         id value = YZCallNoArgSelector(target, selectorName);
@@ -600,10 +674,9 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
 static void YZLogOfficialAccountRouteProbe(void) {
     NSDictionary<NSString *, NSArray<NSString *> *> *probe = @{
         @"LinkTextParser": @[@"tagLink:messageWrap:", @"shouldParseWeAppMPShortLink", @"shouldParseWeAppTagLink"],
-        @"WebViewA8KeyLogicImpl": @[@"getA8Key:Reason:context:", @"goToURL:withCustomerCookies:", @"hasUrlPermission:"],
-        @"WAWebViewController": @[@"initWithURL:presentModal:extraInfo:", @"initWithURL:"],
-        @"MMWebViewController": @[@"initWithURL:presentModal:extraInfo:", @"initWithURL:"],
-        @"MicroMessengerAppDelegate": @[@"openURL:options:completionHandler:"]
+        @"MMRichTextCoverView": @[@"onLinkClicked:withRect:"],
+        @"RichTextView": @[@"clickOnLinkEvent:", @"getLink:"],
+        @"MMRichTextView": @[@"clickOnLinkEvent:", @"getLink:"]
     };
 
     NSMutableArray<NSString *> *available = [NSMutableArray array];
@@ -623,7 +696,8 @@ static void YZLogOfficialAccountRouteProbe(void) {
         @"available": available,
         @"linkParserMethods": YZMethodNamesForClass(NSClassFromString(@"LinkTextParser"), YES, 40),
         @"linkParserClassMethods": YZMethodNamesForClass(NSClassFromString(@"LinkTextParser"), NO, 40),
-        @"webview_disabled": @YES
+        @"linkClickClasses": YZLinkClickClassProbe(),
+        @"unsafeRoutesDisabled": @YES
     }];
 }
 
@@ -981,7 +1055,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         });
     };
 
-    void (^openKnownWebView)(void) = ^{
+    void (^finishNoSafeRoute)(void) = ^{
         YZLogOfficialAccountRouteProbe();
         sLastOfficialAccountOpenResult = @"failed:no-safe-route";
         [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
@@ -989,7 +1063,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     };
 
     if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
-        openKnownWebView();
+        finishNoSafeRoute();
         return;
     }
 

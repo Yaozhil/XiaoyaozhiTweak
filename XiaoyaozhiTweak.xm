@@ -337,6 +337,19 @@ static void YZShowToast(NSString *message) {
     });
 }
 
+static NSString *YZSafeClassName(id object) {
+    if (!object) return @"nil";
+    return NSStringFromClass([object class]) ?: @"unknown";
+}
+
+static void YZLogNativeLinkClick(NSString *source, id linkObject) {
+    [YZRuntimeLogger logEventSync:@"wechat_link_click.hit" info:@{
+        @"source": source ?: @"unknown",
+        @"argumentClass": YZSafeClassName(linkObject),
+        @"top": YZSafeClassName(YZTopViewController())
+    }];
+}
+
 static BOOL YZPerformFollow(void) {
     NSString *userName = kYZOfficialAccountID;
     BOOL configured = userName.length > 0 && ![userName isEqualToString:@"gh_xxxxxxxxxxx"];
@@ -728,6 +741,15 @@ static void YZXiaoyaozhiInit(void) {
 // ============================================================
 // MARK: - Logos Hook
 // ============================================================
+
+%hook MMRichTextCoverView
+
+- (void)onLinkClicked:(id)linkObject withRect:(CGRect)rect {
+    YZLogNativeLinkClick(@"MMRichTextCoverView:onLinkClicked:withRect:", linkObject);
+    %orig;
+}
+
+%end
 
 // Hook 微信的 applicationDidBecomeActive 确保在微信完全启动后再展示
 %hook AppDelegate
