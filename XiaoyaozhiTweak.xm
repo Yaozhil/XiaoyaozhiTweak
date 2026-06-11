@@ -342,9 +342,10 @@ static NSString *YZSafeClassName(id object) {
     return NSStringFromClass([object class]) ?: @"unknown";
 }
 
-static void YZLogNativeLinkClick(NSString *source, id linkObject) {
+static void YZLogNativeLinkClick(NSString *source, id handler, id linkObject) {
     [YZRuntimeLogger logEventSync:@"wechat_link_click.hit" info:@{
         @"source": source ?: @"unknown",
+        @"handlerClass": YZSafeClassName(handler),
         @"argumentClass": YZSafeClassName(linkObject),
         @"top": YZSafeClassName(YZTopViewController())
     }];
@@ -745,7 +746,21 @@ static void YZXiaoyaozhiInit(void) {
 %hook MMRichTextCoverView
 
 - (void)onLinkClicked:(id)linkObject withRect:(CGRect)rect {
-    YZLogNativeLinkClick(@"MMRichTextCoverView:onLinkClicked:withRect:", linkObject);
+    YZLogNativeLinkClick(@"MMRichTextCoverView:onLinkClicked:withRect:", self, linkObject);
+    %orig;
+}
+
+%end
+
+%hook RichTextView
+
+- (void)clickOnLinkEvent:(id)linkObject {
+    YZLogNativeLinkClick(@"RichTextView:clickOnLinkEvent:", self, linkObject);
+    %orig;
+}
+
+- (void)clickOnWeAppMPShortLink:(id)linkObject {
+    YZLogNativeLinkClick(@"RichTextView:clickOnWeAppMPShortLink:", self, linkObject);
     %orig;
 }
 
