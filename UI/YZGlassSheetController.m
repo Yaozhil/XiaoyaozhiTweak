@@ -842,6 +842,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
             } else {
                 [self showToast:@"跳转失败，已复制公众号名称和主页链接"];
             }
+        } else if ([[YZWCServiceCenter lastOfficialAccountOpenResult] hasPrefix:@"message-chat:"]) {
+            [self showToast:@"已打开文件传输助手，请点击主页链接"];
         }
     }];
 }
