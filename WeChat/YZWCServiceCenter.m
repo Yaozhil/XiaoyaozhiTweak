@@ -608,6 +608,81 @@ static void YZLogOfficialAccountRouteProbe(void) {
     }];
 }
 
+static NSArray *YZA8KeyLogicTargets(void) {
+    Class cls = NSClassFromString(@"WebViewA8KeyLogicImpl");
+    if (!cls) return @[];
+
+    NSMutableArray *targets = [NSMutableArray array];
+    YZAddUniqueTarget(targets, [YZWCRuntime getService:@"WebViewA8KeyLogicImpl"]);
+    YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"sharedInstance"));
+    YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"defaultLogic"));
+    YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"defaultManager"));
+    @try {
+        YZAddUniqueTarget(targets, [[cls alloc] init]);
+    } @catch (NSException *exception) {
+        [YZRuntimeLogger logEventSync:@"official_account.a8key.target_exception" info:@{@"reason": exception.reason ?: @"unknown"}];
+    }
+    return targets;
+}
+
+static BOOL YZOpenURLThroughA8KeyLogic(NSURL *url) {
+    if (!url) return NO;
+
+    NSString *urlString = url.absoluteString ?: @"";
+    NSDictionary *cookies = @{};
+    NSDictionary *context = @{
+        @"rawUrl": urlString,
+        @"url": urlString,
+        @"scene": @124,
+        @"fromScene": @124,
+        @"geta8key_scene": @124
+    };
+
+    for (id target in YZA8KeyLogicTargets()) {
+        NSString *targetClass = NSStringFromClass([target class]) ?: @"unknown";
+        if ([target respondsToSelector:NSSelectorFromString(@"hasUrlPermission:")]) {
+            BOOL allowed = YZInvokeSelectorWithArguments(target, @"hasUrlPermission:", @[urlString]);
+            [YZRuntimeLogger logEventSync:@"official_account.a8key.permission" info:@{
+                @"target": targetClass,
+                @"allowed": @(allowed)
+            }];
+        }
+
+        if ([target respondsToSelector:NSSelectorFromString(@"goToURL:withCustomerCookies:")]) {
+            [YZRuntimeLogger logEventSync:@"official_account.a8key.try" info:@{
+                @"target": targetClass,
+                @"selector": @"goToURL:withCustomerCookies:"
+            }];
+            if (YZInvokeSelectorWithArguments(target, @"goToURL:withCustomerCookies:", @[urlString, cookies])) {
+                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"a8key:%@", targetClass];
+                [YZRuntimeLogger logEventSync:@"official_account.a8key.hit" info:@{
+                    @"target": targetClass,
+                    @"selector": @"goToURL:withCustomerCookies:"
+                }];
+                return YES;
+            }
+        }
+
+        if ([target respondsToSelector:NSSelectorFromString(@"getA8Key:Reason:context:")]) {
+            [YZRuntimeLogger logEventSync:@"official_account.a8key.try" info:@{
+                @"target": targetClass,
+                @"selector": @"getA8Key:Reason:context:"
+            }];
+            if (YZInvokeSelectorWithArguments(target, @"getA8Key:Reason:context:", @[urlString, @124, context])) {
+                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"a8key:%@", targetClass];
+                [YZRuntimeLogger logEventSync:@"official_account.a8key.hit" info:@{
+                    @"target": targetClass,
+                    @"selector": @"getA8Key:Reason:context:"
+                }];
+                return YES;
+            }
+        }
+    }
+
+    [YZRuntimeLogger logEventSync:@"official_account.a8key.failed" info:@{@"reason": @"no-target-hit"}];
+    return NO;
+}
+
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
 static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
@@ -964,6 +1039,19 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     void (^openKnownWebView)(void) = ^{
         YZLogOfficialAccountRouteProbe();
+        if (YZOpenURLThroughA8KeyLogic(url)) {
+            if (YZShouldDismissBeforePresenting(viewController)) {
+                SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
+                if ([viewController respondsToSelector:customDismissSel]) {
+                    ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, ^{});
+                } else {
+                    [viewController dismissViewControllerAnimated:YES completion:nil];
+                }
+            }
+            finish(YES);
+            return;
+        }
+
         sLastOfficialAccountOpenResult = @"failed:no-safe-route";
         [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
         finish(NO);
@@ -995,6 +1083,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
         YZLogOfficialAccountRouteProbe();
+        if (YZOpenURLThroughA8KeyLogic(url)) return YES;
         sLastOfficialAccountOpenResult = @"failed:no-safe-route";
         return NO;
     }
