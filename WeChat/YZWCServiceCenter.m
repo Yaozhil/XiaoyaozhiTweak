@@ -137,29 +137,6 @@ static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
     return strcmp(returnType, @encode(void)) == 0;
 }
 
-static NSArray<NSString *> *YZClassNamesForSelector(SEL selector, BOOL instanceMethod, NSUInteger limit) {
-    if (!selector || limit == 0) return @[];
-
-    int classCount = objc_getClassList(NULL, 0);
-    if (classCount <= 0) return @[];
-
-    Class *classes = (__unsafe_unretained Class *)calloc((NSUInteger)classCount, sizeof(Class));
-    if (!classes) return @[];
-
-    objc_getClassList(classes, classCount);
-    NSMutableArray<NSString *> *names = [NSMutableArray array];
-    for (int index = 0; index < classCount && names.count < limit; index++) {
-        Class cls = classes[index];
-        Method method = instanceMethod ? class_getInstanceMethod(cls, selector) : class_getClassMethod(cls, selector);
-        if (!method) continue;
-
-        NSString *name = NSStringFromClass(cls);
-        if (name.length > 0) [names addObject:name];
-    }
-    free(classes);
-    return names;
-}
-
 static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
     for (NSString *selectorName in selectorNames) {
         id value = YZCallNoArgSelector(target, selectorName);
@@ -627,9 +604,6 @@ static void YZLogOfficialAccountRouteProbe(void) {
 
     [YZRuntimeLogger logEventSync:@"official_account.route_probe" info:@{
         @"available": available,
-        @"onLinkClicked": YZClassNamesForSelector(NSSelectorFromString(@"onLinkClicked:withRect:"), YES, 30),
-        @"tagLink": YZClassNamesForSelector(NSSelectorFromString(@"tagLink:messageWrap:"), YES, 30),
-        @"getA8Key": YZClassNamesForSelector(NSSelectorFromString(@"getA8Key:Reason:context:"), YES, 30),
         @"webview_disabled": @YES
     }];
 }

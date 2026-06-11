@@ -12,6 +12,7 @@
 - 最新运行反馈证明底部点击没有进入任何 URL router 尝试：`last=none` 且没有 `open.try/skip_void`。因此当前黑屏不是 router selector 副作用，而是插件浮层先被 dismiss，随后无路由可跳导致底层界面暴露为黑屏。当前已在 dismiss 前加 `official_account.open.preflight`，无可用 router 时不再关闭浮层。
 - 预检版本已确认“不黑屏但不跳转”，`targets=4/responding=0` 表明当前微信 8.0.74 没有可用高层 URL router。已新增 WCPulse 明确出现的已知 WebView/A8Key 初始化器兜底；该路线曾有历史黑屏风险，当前只在初始化器真实存在时尝试，并保留详细日志以便真机验证。
 - WebView/A8Key 兜底真机命中 `MMWebViewController initWithURL:presentModal:extraInfo:` 后仍黑屏，说明该路线不可作为底部入口实现。当前必须撤销 WebView present，只保留无副作用探针，继续寻找 `LinkTextParser/onLinkClicked` 真实点击链路。
+- 撤销 WebView 后新增的全运行时 selector 枚举探针导致底部点击后直接闪退，日志停在 `official_account.open.preflight`。当前已删除 `objc_getClassList` 全类枚举，只保留固定类探针，避免探针本身成为崩溃源。
 - 底部胶囊曾只显示“已复制公众号名称，请搜索关注”，新增判断显示原因可能是 `viewController.navigationController` 和微信根导航均未命中，旧代码因此完全跳过资料页创建；当前已增加无 pushNav 时的 present 兜底。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 
