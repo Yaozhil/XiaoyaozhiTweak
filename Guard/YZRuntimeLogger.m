@@ -140,16 +140,31 @@ static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
 }
 
 + (NSString *)recentLogText {
+    NSMutableArray<NSString *> *merged = [NSMutableArray array];
+
+    NSString *path = [self logPath];
+    NSString *fileText = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    if (fileText.length > 0) {
+        NSArray<NSString *> *fileLines = [fileText componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet];
+        for (NSString *line in fileLines) {
+            if (line.length > 0) [merged addObject:line];
+        }
+    }
+
     NSMutableArray<NSString *> *lines = nil;
     @synchronized (sYZRuntimeLogBuffer) {
         lines = [sYZRuntimeLogBuffer mutableCopy];
     }
-    if (lines.count > 0) return [lines componentsJoinedByString:@"\n"];
+    for (NSString *line in lines) {
+        if (line.length == 0) continue;
+        if (merged.count > 0 && [merged.lastObject isEqualToString:line]) continue;
+        [merged addObject:line];
+    }
 
-    NSString *path = [self logPath];
-    NSString *fileText = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
-    if (fileText.length > 0) return fileText;
-    return [lines componentsJoinedByString:@"\n"] ?: @"";
+    while (merged.count > kYZRuntimeLogMaxEntries) {
+        [merged removeObjectAtIndex:0];
+    }
+    return [merged componentsJoinedByString:@"\n"] ?: @"";
 }
 
 + (void)clearLogs {

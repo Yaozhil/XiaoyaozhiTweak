@@ -127,6 +127,16 @@ static BOOL YZInvokeSelectorWithArguments(id target, NSString *selectorName, NSA
     return NO;
 }
 
+static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
+    if (!target || !selector) return YES;
+    NSMethodSignature *signature = [target methodSignatureForSelector:selector];
+    if (!signature) return YES;
+
+    const char *returnType = signature.methodReturnType;
+    while (*returnType == 'r' || *returnType == 'n' || *returnType == 'N' || *returnType == 'o' || *returnType == 'O' || *returnType == 'R' || *returnType == 'V') returnType++;
+    return strcmp(returnType, @encode(void)) == 0;
+}
+
 static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
     for (NSString *selectorName in selectorNames) {
         id value = YZCallNoArgSelector(target, selectorName);
@@ -487,6 +497,14 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
 
             lastAttempt = [NSString stringWithFormat:@"%@:%@", NSStringFromClass([target class]), selectorName];
             sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"trying:%@", lastAttempt];
+            if (YZSelectorHasVoidReturn(target, selector)) {
+                [YZRuntimeLogger logEventSync:@"official_account.open.skip_void" info:@{
+                    @"target": NSStringFromClass([target class]) ?: @"unknown",
+                    @"selector": selectorName ?: @"unknown"
+                }];
+                continue;
+            }
+
             [YZRuntimeLogger logEventSync:@"official_account.open.try" info:@{
                 @"target": NSStringFromClass([target class]) ?: @"unknown",
                 @"selector": selectorName ?: @"unknown",
@@ -839,12 +857,12 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (void)openBrandWebProfileFromViewController:(UIViewController *)viewController completion:(void(^)(BOOL opened))completion {
     NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
     if (!url) {
-        [YZRuntimeLogger logEvent:@"official_account.open.failed" info:@{@"reason": @"bad-url"}];
+        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"bad-url"}];
         if (completion) completion(NO);
         return;
     }
 
-    [YZRuntimeLogger logEvent:@"official_account.open.begin" info:@{@"from": viewController ? NSStringFromClass(viewController.class) : @"nil"}];
+    [YZRuntimeLogger logEventSync:@"official_account.open.begin" info:@{@"from": viewController ? NSStringFromClass(viewController.class) : @"nil"}];
     void (^finish)(BOOL) = ^(BOOL opened) {
         if (completion) completion(opened);
     };
@@ -873,7 +891,7 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     };
 
     if (YZShouldDismissBeforePresenting(viewController)) {
-        [YZRuntimeLogger logEvent:@"official_account.open.dismiss_first" info:@{@"from": NSStringFromClass(viewController.class) ?: @"unknown"}];
+        [YZRuntimeLogger logEventSync:@"official_account.open.dismiss_first" info:@{@"from": NSStringFromClass(viewController.class) ?: @"unknown"}];
         SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
         if ([viewController respondsToSelector:customDismissSel]) {
             ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, openURL);
