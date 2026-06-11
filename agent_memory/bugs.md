@@ -15,9 +15,7 @@
 - 撤销 WebView 后新增的全运行时 selector 枚举探针导致底部点击后直接闪退，日志停在 `official_account.open.preflight`。当前已删除 `objc_getClassList` 全类枚举，只保留固定类探针，避免探针本身成为崩溃源。
 - 黑屏与闪退均已止住后，底部仍不跳转，固定探针显示可用线索集中在 `WebViewA8KeyLogicImpl`。当前已增加固定 A8Key 尝试，但其内部是否需要真实 WebView 上下文仍待真机确认；若只记录 `a8key.failed` 或命中后仍不跳，需要继续寻找 `LinkTextParser/onLinkClicked` 所属上下文。
 - A8Key 尝试真机日志显示 `hasUrlPermission=false` 后调用 `goToURL:withCustomerCookies:` 导致点击闪退，当前已撤销 A8Key 实际调用。后续实现跳转必须避开高层 URL router、WebView VC、A8Key 直接调用，转向 `LinkTextParser`/真实点击上下文。
-- 微信对话框内点击同一 mp 链接可跳转，说明裸 URL 路线缺少消息上下文。当前新增 `CMessageMgr` 消息投递尝试作为过渡实现；风险是它可能只能把链接发送到文件传输助手，尚未自动打开/自动点击，需要根据 `official_account.message.*` 日志继续推进。
-- `CMessageMgr` 常见 `sendMsg...` selector 未命中，当前改试 `CMessageWrap + AddMsg:MsgWrap:` 本地消息投递。风险是字段名/状态值在微信 8.0.74 可能变化，或 `AddMsg` 只入库不刷新会话；真机需看 `official_account.message.hit/mode=wrap` 后文件传输助手是否出现可点击链接。
-- `CMessageWrap + AddMsg:MsgWrap:` 已在真机命中并记录 `message:filehelper`，但仍需确认文件传输助手会话是否可自动打开、消息是否可见且可点。当前新增聊天页跳转固定 selector，若失败需根据 `official_account.chat.*` 日志继续补目标类/selector。
+- 微信对话框内点击同一 mp 链接可跳转，说明裸 URL 路线缺少消息上下文。曾尝试 `CMessageMgr/CMessageWrap/AddMsg` 证明消息链路可命中，但这会在文件传输助手产生客户可见消息，用户明确指出像账号异常；当前已撤销该方案，后续不得把可见发消息作为客户版公众号入口。
 - 底部胶囊曾只显示“已复制公众号名称，请搜索关注”，新增判断显示原因可能是 `viewController.navigationController` 和微信根导航均未命中，旧代码因此完全跳过资料页创建；当前已增加无 pushNav 时的 present 兜底。
 - 17 系列设备曾因 `iPhone18,*` 未映射而只显示 `iPhone`，已补齐映射并优化未知机型回退。
 

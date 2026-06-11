@@ -32,7 +32,7 @@
 - 用户真机反馈 A8Key 路线点击后闪退，日志显示 `hasUrlPermission=false` 后调用 `goToURL:withCustomerCookies:` 立即中断，说明 A8Key 无权限时不能硬调。已撤销所有 A8Key 实际调用，仅保留固定无副作用 `route_probe`；底部无安全路由时返回 `failed:no-safe-route` 并停留面板。下一步只能继续研究 `LinkTextParser`/真实点击上下文。
 - 用户指出微信对话框里直接点击同一 mp 链接可以跳公众号主页，说明正确方向是微信消息链接链路，而不是裸 URL/WebView/A8Key。当前新增两步：`route_probe` 输出 `LinkTextParser` 固定类实例/类方法列表；无安全路由时尝试通过 `CMessageMgr` 的 `sendMsg:toContactUsrName:` 等候选把公众号主页链接发到 `filehelper`/当前用户，若命中记录 `official_account.message.hit` 和 `route=message:<target>`，为后续基于真实消息对象触发链接点击做准备。
 - 最新日志显示 `LinkTextParser` 只提供解析/富文本方法，`CMessageMgr` 常见 `sendMsg...` selector 未命中。已改为更贴近微信消息系统的 `CMessageWrap` 路线：构造文本消息 wrap，填充 `m_nsFromUsr/m_nsToUsr/m_nsContent/m_uiMessageType/m_uiStatus/m_uiCreateTime`，再尝试 `CMessageMgr AddMsg:MsgWrap:` / `addMsg:msgWrap:` / `AsyncOnAddMsg:MsgWrap:` 投递到 `filehelper` 或当前用户；命中日志为 `official_account.message.hit {"mode":"wrap"}`。
-- 用户通过文件反馈确认 `CMessageWrap + AddMsg:MsgWrap:` 已命中，最近路由为 `message:filehelper`。已新增命中消息投递后的会话打开步骤：获取 `filehelper` 真实 contact 和微信导航控制器，尝试 `MMMsgLogicManager/BaseMsgLogicManager/CMessageMgr` 的 `PushOtherBaseMsgControllerByContact:navigationController:animated:` 等固定 selector；成功后路由记为 `message-chat:filehelper`，提示用户点击会话内主页链接。
+- 用户通过文件反馈确认 `CMessageWrap + AddMsg:MsgWrap:` 可命中并产生 `message:filehelper`，但用户指出该方案会让客户看到文件传输助手被自动写入链接，体验像账号异常。已撤销整条可见消息兜底：删除 `CMessageWrap/AddMsg` 投递、自动打开 `filehelper` 会话和对应 toast；底部胶囊无安全路由时只复制公众号名称与主页链接并记录 `failed:no-safe-route`，不再替用户发送任何消息。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。
