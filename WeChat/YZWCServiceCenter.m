@@ -416,9 +416,7 @@ static NSArray *YZWeChatURLRouterTargets(void) {
     return targets;
 }
 
-static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewController) {
-    if (!url) return NO;
-
+static NSArray<NSDictionary<NSString *, id> *> *YZURLRouterAttempts(NSURL *url, UIViewController *viewController) {
     NSString *urlString = url.absoluteString;
     NSDictionary *extraInfo = @{
         @"scene": @124,
@@ -486,6 +484,52 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
             @{@"selector": @"handleURLString:viewController:", @"args": @[urlString, presenter]}
         ]];
     }
+
+    return attempts;
+}
+
+static BOOL YZHasUsableURLRouter(NSURL *url, UIViewController *viewController) {
+    if (!url) return NO;
+
+    NSArray *targets = YZWeChatURLRouterTargets();
+    NSArray<NSDictionary<NSString *, id> *> *attempts = YZURLRouterAttempts(url, viewController);
+    NSUInteger respondingSelectors = 0;
+    NSUInteger voidSelectors = 0;
+
+    for (id target in targets) {
+        for (NSDictionary<NSString *, id> *attempt in attempts) {
+            NSString *selectorName = attempt[@"selector"];
+            SEL selector = NSSelectorFromString(selectorName);
+            if (![target respondsToSelector:selector]) continue;
+
+            respondingSelectors++;
+            if (YZSelectorHasVoidReturn(target, selector)) {
+                voidSelectors++;
+                continue;
+            }
+            [YZRuntimeLogger logEventSync:@"official_account.open.preflight" info:@{
+                @"result": @YES,
+                @"target": NSStringFromClass([target class]) ?: @"unknown",
+                @"selector": selectorName ?: @"unknown"
+            }];
+            return YES;
+        }
+    }
+
+    sLastOfficialAccountOpenResult = @"failed:preflight-no-router";
+    [YZRuntimeLogger logEventSync:@"official_account.open.preflight" info:@{
+        @"result": @NO,
+        @"targets": @(targets.count),
+        @"responding": @(respondingSelectors),
+        @"void": @(voidSelectors)
+    }];
+    return NO;
+}
+
+static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewController) {
+    if (!url) return NO;
+
+    NSArray<NSDictionary<NSString *, id> *> *attempts = YZURLRouterAttempts(url, viewController);
 
     NSString *lastAttempt = nil;
     for (id target in YZWeChatURLRouterTargets()) {
@@ -867,6 +911,12 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         if (completion) completion(opened);
     };
 
+    if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
+        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"preflight-no-router"}];
+        finish(NO);
+        return;
+    }
+
     void (^openURL)(void) = ^{
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *beforeTop = [self topMostViewController];
@@ -908,6 +958,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (BOOL)openBrandWebProfileFromViewController:(UIViewController *)viewController {
     NSURL *url = [NSURL URLWithString:kYZOfficialAccountProfileURL];
     if (!url) return NO;
+
+    if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
+        return NO;
+    }
 
     if (YZShouldDismissBeforePresenting(viewController)) {
         [self openBrandWebProfileFromViewController:viewController completion:nil];
