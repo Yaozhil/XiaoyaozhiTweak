@@ -252,9 +252,10 @@ static id YZVisibleRichTextViewExcludingView(UIView *excludedView) {
     id remembered = sRememberedRichTextLinkHandler;
     if (remembered && [remembered isKindOfClass:cls]) {
         UIView *rememberedView = (UIView *)remembered;
-        if (rememberedView.window && !YZViewIsDescendantOfView(rememberedView, excludedView)) {
+        if (!YZViewIsDescendantOfView(rememberedView, excludedView)) {
             [YZRuntimeLogger logEventSync:@"official_account.richtext.cached" info:@{
-                @"handlerClass": NSStringFromClass([remembered class]) ?: @"unknown"
+                @"handlerClass": NSStringFromClass([remembered class]) ?: @"unknown",
+                @"inWindow": @(rememberedView.window != nil)
             }];
             return remembered;
         }
