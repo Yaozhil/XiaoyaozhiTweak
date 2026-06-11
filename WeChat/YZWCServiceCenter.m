@@ -477,10 +477,21 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
         ]];
     }
 
+    NSString *lastAttempt = nil;
     for (id target in YZWeChatURLRouterTargets()) {
         for (NSDictionary<NSString *, id> *attempt in attempts) {
             NSString *selectorName = attempt[@"selector"];
             NSArray *arguments = attempt[@"args"];
+            SEL selector = NSSelectorFromString(selectorName);
+            if (![target respondsToSelector:selector]) continue;
+
+            lastAttempt = [NSString stringWithFormat:@"%@:%@", NSStringFromClass([target class]), selectorName];
+            sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"trying:%@", lastAttempt];
+            [YZRuntimeLogger logEventSync:@"official_account.open.try" info:@{
+                @"target": NSStringFromClass([target class]) ?: @"unknown",
+                @"selector": selectorName ?: @"unknown",
+                @"args": @(arguments.count)
+            }];
             if (YZInvokeSelectorWithArguments(target, selectorName, arguments)) {
                 sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"success:%@:%@", NSStringFromClass([target class]), selectorName];
                 NSLog(@"[小杳知] open official account url via %@ %@", NSStringFromClass([target class]), selectorName);
@@ -490,11 +501,20 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
                 }];
                 return YES;
             }
+            [YZRuntimeLogger logEvent:@"official_account.open.miss" info:@{
+                @"target": NSStringFromClass([target class]) ?: @"unknown",
+                @"selector": selectorName ?: @"unknown"
+            }];
         }
     }
-    sLastOfficialAccountOpenResult = @"failed:no-router-hit";
+    sLastOfficialAccountOpenResult = lastAttempt.length > 0
+        ? [NSString stringWithFormat:@"failed:no-router-hit last=%@", lastAttempt]
+        : @"failed:no-router-hit";
     NSLog(@"[小杳知] open official account url failed: no router hit");
-    [YZRuntimeLogger logEvent:@"official_account.open.failed" info:@{@"reason": @"no-router-hit"}];
+    [YZRuntimeLogger logEvent:@"official_account.open.failed" info:@{
+        @"reason": @"no-router-hit",
+        @"last": lastAttempt ?: @"none"
+    }];
     return NO;
 }
 
@@ -831,7 +851,23 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     void (^openURL)(void) = ^{
         dispatch_async(dispatch_get_main_queue(), ^{
-            BOOL opened = YZOpenURLThroughWeChatRouter(url, [self topMostViewController]);
+            UIViewController *beforeTop = [self topMostViewController];
+            UINavigationController *beforeNav = beforeTop.navigationController ?: YZWeChatRootNavController();
+            BOOL opened = YZOpenURLThroughWeChatRouter(url, beforeTop);
+            if (!opened) {
+                UIViewController *afterTop = [self topMostViewController];
+                if (beforeTop && afterTop && afterTop != beforeTop) {
+                    [YZRuntimeLogger logEventSync:@"official_account.open.recover" info:@{
+                        @"before": NSStringFromClass(beforeTop.class) ?: @"unknown",
+                        @"after": NSStringFromClass(afterTop.class) ?: @"unknown"
+                    }];
+                    if (beforeNav && [beforeNav.viewControllers containsObject:beforeTop]) {
+                        [beforeNav popToViewController:beforeTop animated:NO];
+                    } else if (afterTop.presentingViewController) {
+                        [afterTop dismissViewControllerAnimated:NO completion:nil];
+                    }
+                }
+            }
             finish(opened);
         });
     };
@@ -890,6 +926,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
 + (NSString *)lastOfficialAccountOpenResult {
     return sLastOfficialAccountOpenResult ?: @"none";
+}
+
++ (NSString *)officialAccountProfileURL {
+    return kYZOfficialAccountProfileURL;
 }
 
 + (UIImage *)getSelfAvatar {

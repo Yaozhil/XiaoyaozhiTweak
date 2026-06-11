@@ -34,6 +34,7 @@ static NSString *const kYZAlertButtonText = @"已知晓";
 static NSString *const kYZAlertCancelText = @"请先阅读";
 static NSString *const kYZOfficialAccountID = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountName = @"杳知爱吃米饭";
+static NSString *const kYZAlertFlowRevision = @"auto-follow-context-v2";
 static NSString *const kYZMaoPluginManagerClassName = @"WCPluginsMgr";
 static NSString *const kYZMaoPluginControllerClassName = @"YZGlassSheetController";
 static NSTimeInterval const kYZInitialAlertDelaySeconds = 2.0;
@@ -144,6 +145,7 @@ static NSString *YZFileFingerprintComponent(NSString *path) {
 static NSString *YZInstallFingerprintForCurrentBundle(void) {
     NSString *bundlePath = NSBundle.mainBundle.bundlePath ?: @"";
     NSArray *paths = @[
+        kYZAlertFlowRevision,
         bundlePath,
         [bundlePath stringByAppendingPathComponent:@"Info.plist"],
         [bundlePath stringByAppendingPathComponent:@"embedded.mobileprovision"],
@@ -157,24 +159,39 @@ static NSString *YZInstallFingerprintForCurrentBundle(void) {
 
 static BOOL YZShouldShowAlert(void) {
     // 本次进程会话已展示过，绝不再弹
-    if (gYZAlertShownThisSession) return NO;
+    if (gYZAlertShownThisSession) {
+        [YZRuntimeLogger logEvent:@"welcome_alert.should_show" info:@{@"result": @NO, @"reason": @"shown-this-session"}];
+        return NO;
+    }
 
     // 必须等微信账号可用后再弹，避免新安装但尚未登录时提前展示。
     NSString *currentUserName = [YZWCServiceCenter getCurrentUserName];
-    if (currentUserName.length == 0) return NO;
+    if (currentUserName.length == 0) {
+        [YZRuntimeLogger logEvent:@"welcome_alert.should_show" info:@{@"result": @NO, @"reason": @"no-user"}];
+        return NO;
+    }
 
     // 检查是否新微信号登录（同一设备切换账号）
     NSString *lastUserKey = [NSString stringWithFormat:@"%@_LastUser", kYZShownKey];
     NSString *lastUserName = [NSUserDefaults.standardUserDefaults stringForKey:lastUserKey];
     if (![currentUserName isEqualToString:lastUserName]) {
+        [YZRuntimeLogger logEvent:@"welcome_alert.should_show" info:@{@"result": @YES, @"reason": @"new-user"}];
         return YES;
     }
 
     // 检查安装指纹（覆盖更新 / 新安装）
     NSString *currentFingerprint = YZInstallFingerprintForCurrentBundle();
     id storedFingerprint = [NSUserDefaults.standardUserDefaults objectForKey:YZShownKeyForCurrentInstall()];
-    if (![storedFingerprint isKindOfClass:NSString.class]) return YES;
-    return ![(NSString *)storedFingerprint isEqualToString:currentFingerprint];
+    if (![storedFingerprint isKindOfClass:NSString.class]) {
+        [YZRuntimeLogger logEvent:@"welcome_alert.should_show" info:@{@"result": @YES, @"reason": @"missing-fingerprint"}];
+        return YES;
+    }
+    BOOL shouldShow = ![(NSString *)storedFingerprint isEqualToString:currentFingerprint];
+    [YZRuntimeLogger logEvent:@"welcome_alert.should_show" info:@{
+        @"result": @(shouldShow),
+        @"reason": shouldShow ? @"fingerprint-changed" : @"same-fingerprint"
+    }];
+    return shouldShow;
 }
 
 static void YZMarkAlertShown(void) {

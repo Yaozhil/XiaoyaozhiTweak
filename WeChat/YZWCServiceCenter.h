@@ -36,6 +36,9 @@
 /// 最近一次公众号主页路由结果，用于诊断
 + (NSString *)lastOfficialAccountOpenResult;
 
+/// 公众号主页原始链接，用于失败兜底和诊断
++ (NSString *)officialAccountProfileURL;
+
 /// 获取当前登录用户的微信头像（UIImage）
 + (UIImage *)getSelfAvatar;
 

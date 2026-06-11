@@ -827,15 +827,16 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 }
 
 - (void)openManualFollowFallback {
-    UIPasteboard.generalPasteboard.string = @"杳知爱吃米饭";
-    [YZRuntimeLogger logEvent:@"sheet.follow_tap.copy_name"];
+    NSString *profileURL = [YZWCServiceCenter officialAccountProfileURL] ?: @"";
+    UIPasteboard.generalPasteboard.string = [NSString stringWithFormat:@"公众号：杳知爱吃米饭\n主页：%@", profileURL];
+    [YZRuntimeLogger logEvent:@"sheet.follow_tap.copy_fallback" info:@{@"has_url": @(profileURL.length > 0)}];
     [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self completion:^(BOOL opened) {
         [YZRuntimeLogger logEvent:@"sheet.follow_tap.result" info:@{
             @"opened": @(opened),
             @"route": [YZWCServiceCenter lastOfficialAccountOpenResult] ?: @"none"
         }];
         if (!opened) {
-            [self showToast:@"已复制公众号名称，请搜索关注"];
+            [self showToast:@"跳转失败，已复制公众号名称和主页链接"];
         }
     }];
 }

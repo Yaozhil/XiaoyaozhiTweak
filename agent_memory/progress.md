@@ -4,7 +4,7 @@
 
 - 点击“投喂一下”只有震动反馈，无弹窗、无跳转、无 toast、无黑屏。
 - 首次安装登录账号后，或已登录状态下用新签名包覆盖安装后，首次打开显示倒计时弹窗；倒计时结束后点击“已知晓”关闭弹窗并自动关注公众号，关注失败只提示失败。
-- 插件底部胶囊作为稳定公众号入口：保留绿点/蓝点状态布局；明确已关注时显示绿点“已关注”，其余显示蓝点“去关注”；点击后复制公众号名称作为兜底，并尝试通过微信高层 URL/Link router 打开公众号主页；不再触发微信资料页、WebView、动态 selector 枚举、AppDelegate/Universal Link 或外部 scheme，不能再进入黑屏页。
+- 插件底部胶囊作为稳定公众号入口：保留绿点/蓝点状态布局；明确已关注时显示绿点“已关注”，其余显示蓝点“去关注”；点击后复制公众号名称和主页链接作为兜底，并尝试通过微信高层 URL/Link router 打开公众号主页；不再触发微信资料页、WebView、动态 selector 枚举、AppDelegate/Universal Link 或外部 scheme，失败时应尝试恢复点击前页面，不能再停留黑屏页。
 - 版本号按用户要求保持 `1.0.8`，后续除非用户明确要求递增，否则不再自动改版本号。
 
 ## 范围边界
@@ -22,6 +22,7 @@
 - 已新增本地运行日志能力：`Guard/YZRuntimeLogger.h/.m` 维护内存与文件滚动日志，记录初始化、生命周期、首次弹窗、自动关注、底部公众号跳转、关注状态判断、CrashGuard 恢复/禁用等关键事件；日志仅本地保存，不主动联网。
 - 已将主菜单“常用功能”替换为“运行日志”：点击后刷新公众号状态并复制一份运行反馈到剪贴板，包含插件版本、微信版本、包名、iOS、设备、证书、公众号状态、最近路由结果和最近运行日志，方便真机复现后直接反馈排查。
 - 已按用户要求增强底部胶囊公众号主页跳转：`UI/YZGlassSheetController.m` 改为调用带 completion 的 `openBrandProfile:fromViewController:completion:`，失败后才 toast；`WeChat/YZWCServiceCenter.m` 在关闭插件 overlay 后延后一轮主线程再调用微信内部 URL/Link router，降低 overlay 移除和路由抢时序导致的失败；补充高层 URL/Link router 白名单和常见 `openURLString`/`handleURLString` 带 scene/extraInfo/viewController selector；记录最近一次路由结果 `lastOfficialAccountOpenResult` 供后续诊断。
+- 已对比用户提供的 `WCPulse_1.6-2+1-arm64e.deb` 与 `WCPulse_1.6-3-arm64e.deb`：可见线索集中在 `LinkTextParser`、`onLinkClicked:withRect:`、`WebViewA8KeyLogicImpl`、`openURL:options:completionHandler:` 等微信内部“文本链接点击/A8Key/urlcheck”链路，而不是直接构造 WebView 或资料页 VC；当前底部胶囊仍保留高层 URL/Link router 尝试，但新增每次 selector 尝试的同步日志、失败后的页面栈恢复，并把兜底剪贴板改为“公众号名称 + 主页链接”。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。
