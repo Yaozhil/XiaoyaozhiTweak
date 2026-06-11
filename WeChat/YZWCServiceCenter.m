@@ -137,63 +137,6 @@ static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
     return strcmp(returnType, @encode(void)) == 0;
 }
 
-static id YZCreateMessageWrap(NSInteger messageType) {
-    Class wrapClass = NSClassFromString(@"CMessageWrap");
-    if (!wrapClass) return nil;
-
-    SEL initSelector = NSSelectorFromString(@"initWithMsgType:");
-    id wrap = [wrapClass alloc];
-    if ([wrap respondsToSelector:initSelector]) {
-        @try {
-            return ((id (*)(id, SEL, NSInteger))objc_msgSend)(wrap, initSelector, messageType);
-        } @catch (NSException *exception) {
-            [YZRuntimeLogger logEventSync:@"official_account.message.wrap_exception" info:@{@"reason": exception.reason ?: @"unknown"}];
-            return nil;
-        }
-    }
-
-    @try {
-        return [[wrapClass alloc] init];
-    } @catch (NSException *exception) {
-        [YZRuntimeLogger logEventSync:@"official_account.message.wrap_exception" info:@{@"reason": exception.reason ?: @"unknown"}];
-        return nil;
-    }
-}
-
-static void YZSetObjectIfPossible(id target, NSString *key, id value) {
-    if (!target || key.length == 0 || !value) return;
-
-    NSString *setterName = [NSString stringWithFormat:@"set%@%@:",
-                            [[key substringToIndex:1] uppercaseString],
-                            key.length > 1 ? [key substringFromIndex:1] : @""];
-    SEL setter = NSSelectorFromString(setterName);
-    @try {
-        if ([target respondsToSelector:setter]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(target, setter, value);
-            return;
-        }
-        [target setValue:value forKey:key];
-    } @catch (__unused NSException *exception) {
-    }
-}
-
-static void YZSetIntegerIfPossible(id target, NSString *key, NSInteger value) {
-    if (!target || key.length == 0) return;
-
-    NSString *setterName = [NSString stringWithFormat:@"set%@%@:",
-                            [[key substringToIndex:1] uppercaseString],
-                            key.length > 1 ? [key substringFromIndex:1] : @""];
-    SEL setter = NSSelectorFromString(setterName);
-    @try {
-        if ([target respondsToSelector:setter]) {
-            ((void (*)(id, SEL, NSInteger))objc_msgSend)(target, setter, value);
-            return;
-        }
-        [target setValue:@(value) forKey:key];
-    } @catch (__unused NSException *exception) {
-    }
-}
-
 static NSArray<NSString *> *YZMethodNamesForClass(Class cls, BOOL instanceMethods, NSUInteger limit) {
     if (!cls || limit == 0) return @[];
 
@@ -684,170 +627,6 @@ static void YZLogOfficialAccountRouteProbe(void) {
     }];
 }
 
-static BOOL YZOpenChatForUserName(NSString *userName, UIViewController *fromViewController) {
-    if (userName.length == 0) return NO;
-
-    id contactMgr = [YZWCRuntime getService:@"CContactMgr"];
-    id contact = YZBrandContactFromManager(contactMgr, userName);
-    if (!contact) {
-        [YZRuntimeLogger logEventSync:@"official_account.chat.failed" info:@{@"reason": @"no-contact", @"target": userName}];
-        return NO;
-    }
-
-    UINavigationController *nav = YZPreferredPushNavigationController(fromViewController ?: [YZWCServiceCenter topMostViewController]);
-    if (!nav) {
-        [YZRuntimeLogger logEventSync:@"official_account.chat.failed" info:@{@"reason": @"no-nav", @"target": userName}];
-        return NO;
-    }
-
-    NSArray<NSString *> *logicClassNames = @[@"MMMsgLogicManager", @"BaseMsgLogicManager", @"CMessageMgr"];
-    for (NSString *className in logicClassNames) {
-        Class cls = NSClassFromString(className);
-        if (!cls) continue;
-
-        NSMutableArray *targets = [NSMutableArray array];
-        YZAddUniqueTarget(targets, [YZWCRuntime getService:className]);
-        YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"sharedInstance"));
-        YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"defaultManager"));
-        YZAddUniqueTarget(targets, YZCallNoArgSelector(cls, @"defaultLogic"));
-        YZAddUniqueTarget(targets, cls);
-
-        for (id target in targets) {
-            NSArray<NSDictionary<NSString *, id> *> *attempts = @[
-                @{@"selector": @"PushOtherBaseMsgControllerByContact:navigationController:animated:", @"args": @[contact, nav, @YES]},
-                @{@"selector": @"pushOtherBaseMsgControllerByContact:navigationController:animated:", @"args": @[contact, nav, @YES]},
-                @{@"selector": @"PushBaseMsgControllerByContact:navigationController:animated:", @"args": @[contact, nav, @YES]},
-                @{@"selector": @"pushBaseMsgControllerByContact:navigationController:animated:", @"args": @[contact, nav, @YES]}
-            ];
-
-            for (NSDictionary<NSString *, id> *attempt in attempts) {
-                NSString *selectorName = attempt[@"selector"];
-                if (![target respondsToSelector:NSSelectorFromString(selectorName)]) continue;
-
-                [YZRuntimeLogger logEventSync:@"official_account.chat.try" info:@{
-                    @"target": userName,
-                    @"class": NSStringFromClass([target class]) ?: @"unknown",
-                    @"selector": selectorName ?: @"unknown"
-                }];
-                if (YZInvokeSelectorWithArguments(target, selectorName, attempt[@"args"])) {
-                    [YZRuntimeLogger logEventSync:@"official_account.chat.hit" info:@{
-                        @"target": userName,
-                        @"class": NSStringFromClass([target class]) ?: @"unknown",
-                        @"selector": selectorName ?: @"unknown"
-                    }];
-                    return YES;
-                }
-            }
-        }
-    }
-
-    [YZRuntimeLogger logEventSync:@"official_account.chat.failed" info:@{@"reason": @"no-selector-hit", @"target": userName}];
-    return NO;
-}
-
-static BOOL YZSendOfficialAccountLinkMessage(NSString **sentTarget) {
-    id messageMgr = [YZWCRuntime getService:@"CMessageMgr"];
-    if (!messageMgr) {
-        [YZRuntimeLogger logEventSync:@"official_account.message.failed" info:@{@"reason": @"no-message-mgr"}];
-        return NO;
-    }
-
-    NSString *linkText = [NSString stringWithFormat:@"小杳知公众号主页\n%@", kYZOfficialAccountProfileURL];
-    NSString *currentUserName = nil;
-    Class serviceClass = NSClassFromString(@"YZWCServiceCenter");
-    SEL currentUserSelector = NSSelectorFromString(@"getCurrentUserName");
-    if ([serviceClass respondsToSelector:currentUserSelector]) {
-        currentUserName = ((NSString *(*)(id, SEL))objc_msgSend)(serviceClass, currentUserSelector);
-    }
-    NSArray<NSString *> *targets = @[@"filehelper", currentUserName ?: @""];
-    NSMutableArray<NSDictionary<NSString *, id> *> *messageWrapAttempts = [NSMutableArray array];
-    for (NSString *target in targets) {
-        if (target.length == 0) continue;
-
-        id wrap = YZCreateMessageWrap(1);
-        if (!wrap) continue;
-
-        NSInteger now = (NSInteger)[[NSDate date] timeIntervalSince1970];
-        YZSetObjectIfPossible(wrap, @"m_nsFromUsr", currentUserName.length > 0 ? currentUserName : target);
-        YZSetObjectIfPossible(wrap, @"m_nsToUsr", target);
-        YZSetObjectIfPossible(wrap, @"m_nsContent", linkText);
-        YZSetObjectIfPossible(wrap, @"m_nsRealChatUsr", target);
-        YZSetIntegerIfPossible(wrap, @"m_uiMessageType", 1);
-        YZSetIntegerIfPossible(wrap, @"m_uiStatus", 3);
-        YZSetIntegerIfPossible(wrap, @"m_uiCreateTime", now);
-
-        [messageWrapAttempts addObject:@{@"target": target, @"wrap": wrap}];
-    }
-
-    NSArray<NSString *> *addMsgSelectors = @[
-        @"AddMsg:MsgWrap:",
-        @"addMsg:msgWrap:",
-        @"addMsg:MsgWrap:",
-        @"AsyncOnAddMsg:MsgWrap:"
-    ];
-
-    for (NSDictionary<NSString *, id> *item in messageWrapAttempts) {
-        NSString *target = item[@"target"];
-        id wrap = item[@"wrap"];
-        for (NSString *selectorName in addMsgSelectors) {
-            if (![messageMgr respondsToSelector:NSSelectorFromString(selectorName)]) continue;
-
-            [YZRuntimeLogger logEventSync:@"official_account.message.try" info:@{
-                @"selector": selectorName ?: @"unknown",
-                @"target": target ?: @"unknown",
-                @"mode": @"wrap"
-            }];
-            if (YZInvokeSelectorWithArguments(messageMgr, selectorName, @[target, wrap])) {
-                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"message:%@", target];
-                if (sentTarget) *sentTarget = target;
-                [YZRuntimeLogger logEventSync:@"official_account.message.hit" info:@{
-                    @"selector": selectorName ?: @"unknown",
-                    @"target": target ?: @"unknown",
-                    @"mode": @"wrap"
-                }];
-                return YES;
-            }
-        }
-    }
-
-    NSArray<NSDictionary<NSString *, id> *> *attempts = @[
-        @{@"selector": @"sendMsg:toContactUsrName:", @"extra": @[]},
-        @{@"selector": @"sendMsg:toContactUsrName:uiMsgType:", @"extra": @[@1]},
-        @{@"selector": @"SendTextMessage:toUsrName:", @"extra": @[]},
-        @{@"selector": @"SendTextMsg:toUsrName:", @"extra": @[]},
-        @{@"selector": @"sendTextMsg:toUsrName:", @"extra": @[]}
-    ];
-
-    for (NSString *target in targets) {
-        if (target.length == 0) continue;
-
-        for (NSDictionary<NSString *, id> *attempt in attempts) {
-            NSString *selectorName = attempt[@"selector"];
-            NSMutableArray *arguments = [NSMutableArray arrayWithObjects:linkText, target, nil];
-            [arguments addObjectsFromArray:attempt[@"extra"] ?: @[]];
-
-            if (![messageMgr respondsToSelector:NSSelectorFromString(selectorName)]) continue;
-
-            [YZRuntimeLogger logEventSync:@"official_account.message.try" info:@{
-                @"selector": selectorName ?: @"unknown",
-                @"target": target
-            }];
-            if (YZInvokeSelectorWithArguments(messageMgr, selectorName, arguments)) {
-                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"message:%@", target];
-                if (sentTarget) *sentTarget = target;
-                [YZRuntimeLogger logEventSync:@"official_account.message.hit" info:@{
-                    @"selector": selectorName ?: @"unknown",
-                    @"target": target
-                }];
-                return YES;
-            }
-        }
-    }
-
-    [YZRuntimeLogger logEventSync:@"official_account.message.failed" info:@{@"reason": @"no-selector-hit"}];
-    return NO;
-}
-
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
 static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
@@ -1204,19 +983,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     void (^openKnownWebView)(void) = ^{
         YZLogOfficialAccountRouteProbe();
-        NSString *sentTarget = nil;
-        BOOL sentMessage = YZSendOfficialAccountLinkMessage(&sentTarget);
-        if (sentMessage) {
-            BOOL openedChat = YZOpenChatForUserName(sentTarget, viewController);
-            if (openedChat) {
-                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"message-chat:%@", sentTarget ?: @"unknown"];
-                finish(YES);
-                return;
-            }
-        } else {
-            sLastOfficialAccountOpenResult = @"failed:no-safe-route";
-        }
-        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": sentMessage ? @"message-fallback" : @"no-safe-route"}];
+        sLastOfficialAccountOpenResult = @"failed:no-safe-route";
+        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
         finish(NO);
     };
 
@@ -1246,13 +1014,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
         YZLogOfficialAccountRouteProbe();
-        NSString *sentTarget = nil;
-        BOOL sentMessage = YZSendOfficialAccountLinkMessage(&sentTarget);
-        if (sentMessage && YZOpenChatForUserName(sentTarget, viewController)) {
-            sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"message-chat:%@", sentTarget ?: @"unknown"];
-            return YES;
-        }
-        if (!sentMessage) sLastOfficialAccountOpenResult = @"failed:no-safe-route";
+        sLastOfficialAccountOpenResult = @"failed:no-safe-route";
+        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
         return NO;
     }
 
