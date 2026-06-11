@@ -48,6 +48,9 @@
 /// 缓存从微信界面捕获到的当前用户头像
 + (void)rememberPossibleSelfAvatar:(UIImage *)avatar;
 
+/// 缓存微信原生链接点击使用过的 RichTextView 处理器（弱引用，不记录链接内容）
++ (void)rememberRichTextLinkHandler:(id)handler;
+
 /// 获取当前登录用户的昵称
 + (NSString *)getSelfNickname;
 

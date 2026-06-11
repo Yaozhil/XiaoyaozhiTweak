@@ -36,6 +36,7 @@
 - 用户最新反馈显示止损版已稳定：底部点击不黑屏、不闪退、不发文件传输助手消息，但仍返回 `failed:no-safe-route`；首次弹窗自动关注继续命中 `BrandDirectlyOperateContactLogic tryAddBrandContact:context:`。已新增非敏感链接点击探针：`route_probe` 只记录固定 Link/Text 相关类和方法，不再输出 WebView/A8Key/AppDelegate 细节；同时 hook `MMRichTextCoverView onLinkClicked:withRect:`，只在用户真实点击微信原生链接时记录处理类、参数类和顶层 VC 类，不记录 URL/聊天内容。
 - 用户通过文件反馈确认 `route_probe` 里真实可用的点击入口是 `RichTextView:clickOnLinkEvent:`，并且 `RichTextView` 还暴露 `clickOnWeAppMPShortLink:`。已新增这两个真实点击 hook，只在用户手动点击微信链接时记录 `source/handlerClass/argumentClass/top`，不记录 URL 明文或聊天内容，也不主动调用该 selector。
 - 最新文件反馈确认用户手动点击微信里的公众号链接时命中 `wechat_link_click.hit`：`handlerClass=RichTextView`、`argumentClass=__NSCFString`、`top=BaseMsgContentViewController`、`source=RichTextView:clickOnLinkEvent:`。已在底部胶囊无安全 URL router 时新增一条低敏尝试：只在当前微信界面能找到已有 `RichTextView` 实例时，向它传入固定公众号主页字符串并调用 `clickOnLinkEvent:`；不创建消息、不发送消息、不读聊天内容、不记录 URL 明文、不调用 A8Key/WebView/AppDelegate/外部 scheme。找不到真实 RichTextView 或调用失败则保持 `failed:no-safe-route` 复制兜底。
+- 最新反馈显示低敏尝试失败在 `official_account.richtext.failed {"reason":"no-visible-richtext"}`，说明插件弹层打开时无法从窗口层级直接遍历到可用 `RichTextView`。已新增弱引用缓存：用户手动点击微信原生链接并命中 `RichTextView:clickOnLinkEvent:` 或 `clickOnWeAppMPShortLink:` 时，仅缓存处理器对象本身（弱引用）和记录类名；底部胶囊优先复用该真实处理器，弱引用失效或不在窗口中则回退继续扫描/失败兜底。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。

@@ -755,11 +755,13 @@ static void YZXiaoyaozhiInit(void) {
 %hook RichTextView
 
 - (void)clickOnLinkEvent:(id)linkObject {
+    [YZWCServiceCenter rememberRichTextLinkHandler:self];
     YZLogNativeLinkClick(@"RichTextView:clickOnLinkEvent:", self, linkObject);
     %orig;
 }
 
 - (void)clickOnWeAppMPShortLink:(id)linkObject {
+    [YZWCServiceCenter rememberRichTextLinkHandler:self];
     YZLogNativeLinkClick(@"RichTextView:clickOnWeAppMPShortLink:", self, linkObject);
     %orig;
 }

@@ -13,6 +13,7 @@ static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
 static NSString *sLastOfficialAccountOpenResult = nil;
+static __weak id sRememberedRichTextLinkHandler = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124";
 
@@ -247,6 +248,17 @@ static UIView *YZFindSubviewOfClassSkippingView(UIView *root, Class cls, UIView 
 static id YZVisibleRichTextViewExcludingView(UIView *excludedView) {
     Class cls = NSClassFromString(@"RichTextView");
     if (!cls) return nil;
+
+    id remembered = sRememberedRichTextLinkHandler;
+    if (remembered && [remembered isKindOfClass:cls]) {
+        UIView *rememberedView = (UIView *)remembered;
+        if (rememberedView.window && !YZViewIsDescendantOfView(rememberedView, excludedView)) {
+            [YZRuntimeLogger logEventSync:@"official_account.richtext.cached" info:@{
+                @"handlerClass": NSStringFromClass([remembered class]) ?: @"unknown"
+            }];
+            return remembered;
+        }
+    }
 
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:UIWindowScene.class]) continue;
@@ -1319,6 +1331,15 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 + (void)rememberPossibleSelfAvatar:(UIImage *)avatar {
     if (!YZLooksLikeAvatarImage(avatar)) return;
     sCachedSelfAvatar = avatar;
+}
+
++ (void)rememberRichTextLinkHandler:(id)handler {
+    Class cls = NSClassFromString(@"RichTextView");
+    if (!handler || !cls || ![handler isKindOfClass:cls]) return;
+    sRememberedRichTextLinkHandler = handler;
+    [YZRuntimeLogger logEventSync:@"wechat_link_click.handler_cached" info:@{
+        @"handlerClass": NSStringFromClass([handler class]) ?: @"unknown"
+    }];
 }
 
 + (NSString *)getSelfNickname {
