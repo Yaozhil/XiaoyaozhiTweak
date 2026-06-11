@@ -25,6 +25,7 @@
 - 已对比用户提供的 `WCPulse_1.6-2+1-arm64e.deb` 与 `WCPulse_1.6-3-arm64e.deb`：可见线索集中在 `LinkTextParser`、`onLinkClicked:withRect:`、`WebViewA8KeyLogicImpl`、`openURL:options:completionHandler:` 等微信内部“文本链接点击/A8Key/urlcheck”链路，而不是直接构造 WebView 或资料页 VC；当前底部胶囊仍保留高层 URL/Link router 尝试，但新增每次 selector 尝试的同步日志、失败后的页面栈恢复，并把兜底剪贴板改为“公众号名称 + 主页链接”。
 - 用户确认黑屏后只能划掉后台重开再复制反馈；已修复运行反馈只读本次内存日志的问题，改为合并文件日志与内存日志，确保重开后仍能看到上一轮黑屏前已落盘的点击/路由日志；同时将底部点击、兜底复制、路由开始/关闭浮层等关键事件改为同步落盘，并跳过所有 `void` 返回的 URL router selector，避免无法确认成功但有副作用的调用继续把微信带到黑屏。
 - 最新运行反馈显示底部点击后 `official_account.open.failed {"last":"none","reason":"no-router-hit"}`，没有任何 `open.try/skip_void`，说明当前微信 8.0.74 环境没有命中高层 URL router，黑屏来自先 dismiss 插件浮层后无路由可跳。已新增路由预检：正式 dismiss 前先统计可用 router/selector，若无可用非 void selector，直接留在插件界面返回失败并 toast，不再关闭浮层导致黑屏；日志新增 `official_account.open.preflight`。
+- 用户确认预检版本不再黑屏但没有跳转；运行反馈显示 `targets=4/responding=0`，说明高层 URL router 路线不可用。已根据 WCPulse 1.6-3 字符串中明确出现的 `WAWebViewController/MMWebViewController` 与 `initWithURL:presentModal:extraInfo:` 增加已知 WebView/A8Key 兜底：router 预检失败时先尝试创建带 `scene/fromScene/geta8key_scene=124` 的控制器，类或初始化器不存在则不 dismiss；命中时日志记录 `official_account.webview.hit/present`。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。

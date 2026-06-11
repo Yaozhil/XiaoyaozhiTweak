@@ -127,6 +127,62 @@ static BOOL YZInvokeSelectorWithArguments(id target, NSString *selectorName, NSA
     return NO;
 }
 
+static id YZCallObjectSelectorWithArguments(id target, NSString *selectorName, NSArray *arguments) {
+    if (!target || selectorName.length == 0) return nil;
+    SEL selector = NSSelectorFromString(selectorName);
+    if (![target respondsToSelector:selector]) return nil;
+
+    @try {
+        NSMethodSignature *signature = [target methodSignatureForSelector:selector];
+        if (!signature) return nil;
+        NSUInteger argumentCount = signature.numberOfArguments > 2 ? signature.numberOfArguments - 2 : 0;
+        if (argumentCount > arguments.count) return nil;
+
+        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+        invocation.target = target;
+        invocation.selector = selector;
+
+        for (NSUInteger index = 0; index < argumentCount; index++) {
+            id value = arguments[index];
+            const char *type = [signature getArgumentTypeAtIndex:index + 2];
+            while (*type == 'r' || *type == 'n' || *type == 'N' || *type == 'o' || *type == 'O' || *type == 'R' || *type == 'V') type++;
+
+            if (type[0] == '@') {
+                id objectValue = value == (id)kCFNull ? nil : value;
+                [invocation setArgument:&objectValue atIndex:index + 2];
+            } else if (strcmp(type, @encode(BOOL)) == 0 || strcmp(type, "B") == 0) {
+                BOOL boolValue = [value respondsToSelector:@selector(boolValue)] ? [value boolValue] : NO;
+                [invocation setArgument:&boolValue atIndex:index + 2];
+            } else if (strcmp(type, @encode(NSInteger)) == 0 ||
+                       strcmp(type, @encode(NSUInteger)) == 0 ||
+                       strcmp(type, @encode(int)) == 0 ||
+                       strcmp(type, @encode(unsigned int)) == 0 ||
+                       strcmp(type, @encode(long)) == 0 ||
+                       strcmp(type, @encode(unsigned long)) == 0 ||
+                       strcmp(type, @encode(long long)) == 0 ||
+                       strcmp(type, @encode(unsigned long long)) == 0) {
+                NSInteger integerValue = [value respondsToSelector:@selector(integerValue)] ? [value integerValue] : 0;
+                [invocation setArgument:&integerValue atIndex:index + 2];
+            } else {
+                return nil;
+            }
+        }
+
+        [invocation invoke];
+
+        const char *returnType = signature.methodReturnType;
+        while (*returnType == 'r' || *returnType == 'n' || *returnType == 'N' || *returnType == 'o' || *returnType == 'O' || *returnType == 'R' || *returnType == 'V') returnType++;
+        if (returnType[0] != '@') return nil;
+
+        __unsafe_unretained id result = nil;
+        [invocation getReturnValue:&result];
+        return result;
+    } @catch (NSException *exception) {
+        NSLog(@"[小杳知] object selector %@ failed: %@", selectorName, exception.reason);
+        return nil;
+    }
+}
+
 static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
     if (!target || !selector) return YES;
     NSMethodSignature *signature = [target methodSignatureForSelector:selector];
@@ -580,6 +636,52 @@ static BOOL YZOpenURLThroughWeChatRouter(NSURL *url, UIViewController *viewContr
     return NO;
 }
 
+static UIViewController *YZOfficialAccountWebViewController(NSURL *url) {
+    if (!url) return nil;
+
+    NSString *urlString = url.absoluteString ?: @"";
+    NSDictionary *extraInfo = @{
+        @"rawUrl": urlString,
+        @"url": urlString,
+        @"scene": @124,
+        @"fromScene": @124,
+        @"geta8key_scene": @124,
+        @"presentModal": @YES
+    };
+    NSArray<NSString *> *classNames = @[@"WAWebViewController", @"MMWebViewController"];
+    NSArray<NSDictionary<NSString *, id> *> *initializers = @[
+        @{@"selector": @"initWithURL:presentModal:extraInfo:", @"args": @[url, @YES, extraInfo]},
+        @{@"selector": @"initWithURL:presentModal:extraInfo:", @"args": @[urlString, @YES, extraInfo]},
+        @{@"selector": @"initWithURL:", @"args": @[url]},
+        @{@"selector": @"initWithURL:", @"args": @[urlString]}
+    ];
+
+    for (NSString *className in classNames) {
+        Class cls = NSClassFromString(className);
+        if (!cls) continue;
+
+        for (NSDictionary<NSString *, id> *initializer in initializers) {
+            NSString *selectorName = initializer[@"selector"];
+            NSArray *arguments = initializer[@"args"];
+            SEL selector = NSSelectorFromString(selectorName);
+            if (![cls instancesRespondToSelector:selector]) continue;
+
+            id instance = [cls alloc];
+            id controller = YZCallObjectSelectorWithArguments(instance, selectorName, arguments);
+            if ([controller isKindOfClass:UIViewController.class]) {
+                [YZRuntimeLogger logEventSync:@"official_account.webview.hit" info:@{
+                    @"class": className ?: @"unknown",
+                    @"selector": selectorName ?: @"unknown"
+                }];
+                return controller;
+            }
+        }
+    }
+
+    [YZRuntimeLogger logEventSync:@"official_account.webview.missing" info:nil];
+    return nil;
+}
+
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
 static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
@@ -911,12 +1013,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         if (completion) completion(opened);
     };
 
-    if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
-        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"preflight-no-router"}];
-        finish(NO);
-        return;
-    }
-
     void (^openURL)(void) = ^{
         dispatch_async(dispatch_get_main_queue(), ^{
             UIViewController *beforeTop = [self topMostViewController];
@@ -940,6 +1036,27 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
         });
     };
 
+    void (^openKnownWebView)(void) = ^{
+        UIViewController *controller = YZOfficialAccountWebViewController(url);
+        if (!controller) {
+            [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"preflight-no-router"}];
+            finish(NO);
+            return;
+        }
+
+        [YZRuntimeLogger logEventSync:@"official_account.webview.present" info:@{@"class": NSStringFromClass(controller.class) ?: @"unknown"}];
+        BOOL shown = [self presentController:controller fromViewController:viewController];
+        sLastOfficialAccountOpenResult = shown
+            ? [NSString stringWithFormat:@"webview:%@", NSStringFromClass(controller.class)]
+            : @"failed:webview-present";
+        finish(shown);
+    };
+
+    if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
+        openKnownWebView();
+        return;
+    }
+
     if (YZShouldDismissBeforePresenting(viewController)) {
         [YZRuntimeLogger logEventSync:@"official_account.open.dismiss_first" info:@{@"from": NSStringFromClass(viewController.class) ?: @"unknown"}];
         SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
@@ -960,7 +1077,13 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
     if (!url) return NO;
 
     if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
-        return NO;
+        UIViewController *controller = YZOfficialAccountWebViewController(url);
+        if (!controller) return NO;
+        BOOL shown = [self presentController:controller fromViewController:viewController];
+        sLastOfficialAccountOpenResult = shown
+            ? [NSString stringWithFormat:@"webview:%@", NSStringFromClass(controller.class)]
+            : @"failed:webview-present";
+        return shown;
     }
 
     if (YZShouldDismissBeforePresenting(viewController)) {
