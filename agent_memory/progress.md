@@ -38,6 +38,7 @@
 - 最新文件反馈确认用户手动点击微信里的公众号链接时命中 `wechat_link_click.hit`：`handlerClass=RichTextView`、`argumentClass=__NSCFString`、`top=BaseMsgContentViewController`、`source=RichTextView:clickOnLinkEvent:`。已在底部胶囊无安全 URL router 时新增一条低敏尝试：只在当前微信界面能找到已有 `RichTextView` 实例时，向它传入固定公众号主页字符串并调用 `clickOnLinkEvent:`；不创建消息、不发送消息、不读聊天内容、不记录 URL 明文、不调用 A8Key/WebView/AppDelegate/外部 scheme。找不到真实 RichTextView 或调用失败则保持 `failed:no-safe-route` 复制兜底。
 - 最新反馈显示低敏尝试失败在 `official_account.richtext.failed {"reason":"no-visible-richtext"}`，说明插件弹层打开时无法从窗口层级直接遍历到可用 `RichTextView`。已新增弱引用缓存：用户手动点击微信原生链接并命中 `RichTextView:clickOnLinkEvent:` 或 `clickOnWeAppMPShortLink:` 时，仅缓存处理器对象本身（弱引用）和记录类名；底部胶囊优先复用该真实处理器，弱引用失效或不在窗口中则回退继续扫描/失败兜底。
 - 用户确认聊天框状态下无法打开小杳知插件，因此测试流程不能要求“回到聊天页再打开插件”。已放宽缓存处理器复用条件：弱引用还活着且不是插件自身视图时即可尝试，不再强制要求 `RichTextView.window != nil`；日志记录 `official_account.richtext.cached` 时附带 `inWindow`，用于判断离开聊天页后处理器是否仍存活。
+- 最新文件反馈显示手动点击微信原生链接时已缓存 `RichTextView`，但底部胶囊点击时没有出现 `official_account.richtext.cached`，说明弱引用处理器在离开聊天场景后已经释放。当前改为低敏 synthetic 路线：无可复用真实 `RichTextView` 时临时创建一个 1x1 的 `RichTextView`，只写入固定公众号主页 URL 和公开文本 `Official Account`，调用微信自己的 `clickOnLinkEvent:`；不读取/记录聊天内容，不发送消息，不调用 WebView/A8Key/AppDelegate/外部 scheme。临时对象仅强引用约 5 秒，命中后延迟收起插件浮层，避免跳转被浮层遮住。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。
@@ -94,3 +95,4 @@
 - 已搜索活跃代码，未发现旧赞赏弹窗/旧赞赏扫码 provider/旧小游戏/外部 `weixin://`/自建 `WKWebView`/直接构造 `MMWebViewController/WCWebViewController`/旧版本号残留。
 - 本机 Windows 当前未检测到 `make`、`clang`、`dpkg-deb`，无法本地完成 Theos 编译验证；需以 GitHub Actions 为构建验证。
 - 本次运行日志改动已运行 `git diff --check`，无空白错误；已搜索活跃代码，未重新引入 `weixin://`、`WKWebView`、`MMWebView`、`WCWebView`、`Universal Link`、`openWebView`、`loadURL`、`jump` 等禁用/高风险路径。
+- 本次 synthetic RichTextView 改动已运行 `git diff --check`，无空白错误；已搜索活跃代码，未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描路线。

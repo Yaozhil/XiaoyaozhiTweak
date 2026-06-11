@@ -14,6 +14,7 @@ static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
 static NSString *sLastOfficialAccountOpenResult = nil;
 static __weak id sRememberedRichTextLinkHandler = nil;
+static id sSyntheticRichTextLinkHandler = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124";
 
@@ -274,13 +275,86 @@ static id YZVisibleRichTextViewExcludingView(UIView *excludedView) {
     return nil;
 }
 
+static id YZCreateSyntheticRichTextView(NSURL *url, UIViewController *viewController) {
+    NSString *urlString = url.absoluteString;
+    Class cls = NSClassFromString(@"RichTextView");
+    if (!cls || urlString.length == 0) return nil;
+
+    id richTextView = nil;
+    @try {
+        if ([cls instancesRespondToSelector:@selector(initWithFrame:)]) {
+            richTextView = ((id (*)(id, SEL, CGRect))objc_msgSend)([cls alloc], @selector(initWithFrame:), CGRectMake(0, 0, 1, 1));
+        } else {
+            richTextView = [[cls alloc] init];
+        }
+    } @catch (NSException *exception) {
+        [YZRuntimeLogger logEventSync:@"official_account.richtext.synthetic_failed" info:@{
+            @"reason": @"init-exception",
+            @"exception": exception.name ?: @"unknown"
+        }];
+        return nil;
+    }
+    if (!richTextView) return nil;
+
+    UIView *hostView = nil;
+    if (viewController.isViewLoaded) hostView = viewController.view;
+    if (!hostView) hostView = [YZWCServiceCenter topMostViewController].view;
+
+    BOOL attached = NO;
+    if ([richTextView isKindOfClass:UIView.class] && hostView) {
+        UIView *view = (UIView *)richTextView;
+        view.frame = CGRectMake(0, 0, 1, 1);
+        view.alpha = 0.01;
+        view.userInteractionEnabled = NO;
+        [hostView addSubview:view];
+        attached = YES;
+    }
+
+    BOOL configured = NO;
+    configured = YZInvokeSelectorWithArguments(richTextView, @"setBHandleTextClick:", @[@YES]) || configured;
+    configured = YZInvokeSelectorWithArguments(richTextView, @"appendTextStyleToEnd:linkUrl:", @[@"Official Account", urlString]) || configured;
+
+    sSyntheticRichTextLinkHandler = richTextView;
+    [YZRuntimeLogger logEventSync:@"official_account.richtext.synthetic_ready" info:@{
+        @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown",
+        @"attached": @(attached),
+        @"configured": @(configured)
+    }];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if ([sSyntheticRichTextLinkHandler isKindOfClass:UIView.class]) {
+            [(UIView *)sSyntheticRichTextLinkHandler removeFromSuperview];
+        }
+        sSyntheticRichTextLinkHandler = nil;
+    });
+
+    return richTextView;
+}
+
+static void YZDismissControllerAfterRichTextHit(UIViewController *viewController) {
+    if (!YZShouldDismissBeforePresenting(viewController)) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
+        if ([viewController respondsToSelector:customDismissSel]) {
+            ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, nil);
+        } else {
+            [viewController dismissViewControllerAnimated:YES completion:nil];
+        }
+    });
+}
+
 static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *viewController) {
     NSString *urlString = url.absoluteString;
     if (urlString.length == 0) return NO;
 
     id richTextView = YZVisibleRichTextViewExcludingView(viewController.view);
+    BOOL synthetic = NO;
     if (!richTextView) {
-        [YZRuntimeLogger logEventSync:@"official_account.richtext.failed" info:@{@"reason": @"no-visible-richtext"}];
+        richTextView = YZCreateSyntheticRichTextView(url, viewController);
+        synthetic = (richTextView != nil);
+    }
+    if (!richTextView) {
+        [YZRuntimeLogger logEventSync:@"official_account.richtext.failed" info:@{@"reason": @"no-richtext-route"}];
         return NO;
     }
 
@@ -295,13 +369,16 @@ static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *vi
 
     [YZRuntimeLogger logEventSync:@"official_account.richtext.try" info:@{
         @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown",
-        @"argumentClass": NSStringFromClass([urlString class]) ?: @"unknown"
+        @"argumentClass": NSStringFromClass([urlString class]) ?: @"unknown",
+        @"source": synthetic ? @"synthetic" : @"existing"
     }];
     if (YZInvokeSelectorWithArguments(richTextView, selectorName, @[urlString])) {
-        sLastOfficialAccountOpenResult = @"richtext:clickOnLinkEvent";
+        sLastOfficialAccountOpenResult = synthetic ? @"richtext:synthetic" : @"richtext:clickOnLinkEvent";
         [YZRuntimeLogger logEventSync:@"official_account.richtext.hit" info:@{
-            @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown"
+            @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown",
+            @"source": synthetic ? @"synthetic" : @"existing"
         }];
+        YZDismissControllerAfterRichTextHit(viewController);
         return YES;
     }
 

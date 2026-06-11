@@ -47,6 +47,7 @@
 - 用户补充旧方案能进入公众号主页但不能上下滑动，风险点更像插件 view/window 透明遮罩没有移除导致触摸被拦截；当前 `dismissAnimated` 已在移除 view 前禁用 `userInteractionEnabled` 并清理动画。
 - 受限账号进入公众号主页只看到“发送消息”、没有关注按钮，可能是微信账号限制或服务端状态导致；插件只能打开正确的微信内部主页，无法绕过微信限制强制关注。
 - `WeChat-2026-06-05-004816.ips` 显示底部点击闪退为 `doesNotRecognizeSelector`/`SIGABRT`，触发线程是主线程手势，调用栈经过插件 dylib；高风险点为直接调用微信私有 WebView 构造器、自动关注 selector 或未知 URL/Web 路由服务。当前底部胶囊不直接调用自动关注私有接口，也不再直接构造/push WebView VC 或动态探测微信 URL/Web 路由服务，只走固定高层 URL/Link router 白名单。
+- synthetic `RichTextView` 路线只构造空的临时富文本视图并调用微信原生 `clickOnLinkEvent:`，隐私风险低于强持有真实聊天视图或发送文件传输助手消息；但微信是否接受缺少真实聊天上下文的临时视图仍需真机日志确认。若日志出现 `official_account.richtext.hit {"source":"synthetic"}` 但视觉上不跳转，说明 `clickOnLinkEvent:` 需要更完整的原生上下文，不能把“调用返回 void”当成真实成功。
 - Windows 本机缺少 Theos/make/clang/dpkg-deb，编译级验证依赖 GitHub Actions。
 
 ## 失败尝试
