@@ -30,6 +30,7 @@
 - 用户真机反馈撤销 WebView 后点击底部直接闪退，日志停在 `official_account.open.preflight` 后、`route_probe` 前；判断为 `objc_getClassList` 全运行时 selector 枚举探针过重或不稳定。已删除全类枚举，只保留固定类名/固定 selector 的无副作用探针，并继续禁用 WebView present。
 - 最新日志确认黑屏/闪退已解决但底部仍未跳转；固定探针显示 `WebViewA8KeyLogicImpl` 真实存在并响应 `goToURL:withCustomerCookies:`、`getA8Key:Reason:context:`、`hasUrlPermission:`。已新增 A8Key 路由尝试：高层 URL router 不可用时，不创建 WebView、不全类枚举，改为固定调用 `WebViewA8KeyLogicImpl` 候选实例的 A8Key 方法；命中才关闭浮层，失败继续留在插件界面并记录 `official_account.a8key.*`。
 - 用户真机反馈 A8Key 路线点击后闪退，日志显示 `hasUrlPermission=false` 后调用 `goToURL:withCustomerCookies:` 立即中断，说明 A8Key 无权限时不能硬调。已撤销所有 A8Key 实际调用，仅保留固定无副作用 `route_probe`；底部无安全路由时返回 `failed:no-safe-route` 并停留面板。下一步只能继续研究 `LinkTextParser`/真实点击上下文。
+- 用户指出微信对话框里直接点击同一 mp 链接可以跳公众号主页，说明正确方向是微信消息链接链路，而不是裸 URL/WebView/A8Key。当前新增两步：`route_probe` 输出 `LinkTextParser` 固定类实例/类方法列表；无安全路由时尝试通过 `CMessageMgr` 的 `sendMsg:toContactUsrName:` 等候选把公众号主页链接发到 `filehelper`/当前用户，若命中记录 `official_account.message.hit` 和 `route=message:<target>`，为后续基于真实消息对象触发链接点击做准备。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。

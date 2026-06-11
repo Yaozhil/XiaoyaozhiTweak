@@ -137,6 +137,23 @@ static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
     return strcmp(returnType, @encode(void)) == 0;
 }
 
+static NSArray<NSString *> *YZMethodNamesForClass(Class cls, BOOL instanceMethods, NSUInteger limit) {
+    if (!cls || limit == 0) return @[];
+
+    unsigned int count = 0;
+    Method *methods = class_copyMethodList(instanceMethods ? cls : object_getClass(cls), &count);
+    if (!methods) return @[];
+
+    NSMutableArray<NSString *> *names = [NSMutableArray array];
+    for (unsigned int index = 0; index < count && names.count < limit; index++) {
+        SEL selector = method_getName(methods[index]);
+        NSString *name = NSStringFromSelector(selector);
+        if (name.length > 0) [names addObject:name];
+    }
+    free(methods);
+    return names;
+}
+
 static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
     for (NSString *selectorName in selectorNames) {
         id value = YZCallNoArgSelector(target, selectorName);
@@ -604,8 +621,62 @@ static void YZLogOfficialAccountRouteProbe(void) {
 
     [YZRuntimeLogger logEventSync:@"official_account.route_probe" info:@{
         @"available": available,
+        @"linkParserMethods": YZMethodNamesForClass(NSClassFromString(@"LinkTextParser"), YES, 40),
+        @"linkParserClassMethods": YZMethodNamesForClass(NSClassFromString(@"LinkTextParser"), NO, 40),
         @"webview_disabled": @YES
     }];
+}
+
+static BOOL YZSendOfficialAccountLinkMessage(void) {
+    id messageMgr = [YZWCRuntime getService:@"CMessageMgr"];
+    if (!messageMgr) {
+        [YZRuntimeLogger logEventSync:@"official_account.message.failed" info:@{@"reason": @"no-message-mgr"}];
+        return NO;
+    }
+
+    NSString *linkText = [NSString stringWithFormat:@"小杳知公众号主页\n%@", kYZOfficialAccountProfileURL];
+    NSString *currentUserName = nil;
+    Class serviceClass = NSClassFromString(@"YZWCServiceCenter");
+    SEL currentUserSelector = NSSelectorFromString(@"getCurrentUserName");
+    if ([serviceClass respondsToSelector:currentUserSelector]) {
+        currentUserName = ((NSString *(*)(id, SEL))objc_msgSend)(serviceClass, currentUserSelector);
+    }
+    NSArray<NSString *> *targets = @[@"filehelper", currentUserName ?: @""];
+    NSArray<NSDictionary<NSString *, id> *> *attempts = @[
+        @{@"selector": @"sendMsg:toContactUsrName:", @"extra": @[]},
+        @{@"selector": @"sendMsg:toContactUsrName:uiMsgType:", @"extra": @[@1]},
+        @{@"selector": @"SendTextMessage:toUsrName:", @"extra": @[]},
+        @{@"selector": @"SendTextMsg:toUsrName:", @"extra": @[]},
+        @{@"selector": @"sendTextMsg:toUsrName:", @"extra": @[]}
+    ];
+
+    for (NSString *target in targets) {
+        if (target.length == 0) continue;
+
+        for (NSDictionary<NSString *, id> *attempt in attempts) {
+            NSString *selectorName = attempt[@"selector"];
+            NSMutableArray *arguments = [NSMutableArray arrayWithObjects:linkText, target, nil];
+            [arguments addObjectsFromArray:attempt[@"extra"] ?: @[]];
+
+            if (![messageMgr respondsToSelector:NSSelectorFromString(selectorName)]) continue;
+
+            [YZRuntimeLogger logEventSync:@"official_account.message.try" info:@{
+                @"selector": selectorName ?: @"unknown",
+                @"target": target
+            }];
+            if (YZInvokeSelectorWithArguments(messageMgr, selectorName, arguments)) {
+                sLastOfficialAccountOpenResult = [NSString stringWithFormat:@"message:%@", target];
+                [YZRuntimeLogger logEventSync:@"official_account.message.hit" info:@{
+                    @"selector": selectorName ?: @"unknown",
+                    @"target": target
+                }];
+                return YES;
+            }
+        }
+    }
+
+    [YZRuntimeLogger logEventSync:@"official_account.message.failed" info:@{@"reason": @"no-selector-hit"}];
+    return NO;
 }
 
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
@@ -964,8 +1035,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     void (^openKnownWebView)(void) = ^{
         YZLogOfficialAccountRouteProbe();
-        sLastOfficialAccountOpenResult = @"failed:no-safe-route";
-        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
+        BOOL sentMessage = YZSendOfficialAccountLinkMessage();
+        if (!sentMessage) sLastOfficialAccountOpenResult = @"failed:no-safe-route";
+        [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": sentMessage ? @"message-fallback" : @"no-safe-route"}];
         finish(NO);
     };
 
@@ -995,7 +1067,8 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
         YZLogOfficialAccountRouteProbe();
-        sLastOfficialAccountOpenResult = @"failed:no-safe-route";
+        BOOL sentMessage = YZSendOfficialAccountLinkMessage();
+        if (!sentMessage) sLastOfficialAccountOpenResult = @"failed:no-safe-route";
         return NO;
     }
 
