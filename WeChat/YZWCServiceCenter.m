@@ -191,14 +191,7 @@ static NSDictionary *YZLinkClickClassProbe(void) {
         @"MMRichTextView",
         @"LinkTextView",
         @"MMLinkTextView",
-        @"WCLinkTextView",
-        @"TextMessageNodeView",
-        @"MessageNodeView",
-        @"BaseMessageNodeView",
-        @"BaseMsgContentViewController",
-        @"BaseMsgViewController",
-        @"ChatTableViewCell",
-        @"MMTableViewCell"
+        @"WCLinkTextView"
     ];
     NSArray<NSString *> *needles = @[
         @"Link",
@@ -226,6 +219,84 @@ static NSDictionary *YZLinkClickClassProbe(void) {
         };
     }
     return result;
+}
+
+static BOOL YZViewIsDescendantOfView(UIView *view, UIView *ancestor) {
+    if (!view || !ancestor) return NO;
+    UIView *cursor = view;
+    while (cursor) {
+        if (cursor == ancestor) return YES;
+        cursor = cursor.superview;
+    }
+    return NO;
+}
+
+static UIView *YZFindSubviewOfClassSkippingView(UIView *root, Class cls, UIView *skippedView) {
+    if (!root || !cls) return nil;
+    if (skippedView && YZViewIsDescendantOfView(root, skippedView)) return nil;
+    if (root.hidden || root.alpha < 0.01) return nil;
+    if ([root isKindOfClass:cls]) return root;
+
+    for (UIView *subview in [root.subviews reverseObjectEnumerator]) {
+        UIView *match = YZFindSubviewOfClassSkippingView(subview, cls, skippedView);
+        if (match) return match;
+    }
+    return nil;
+}
+
+static id YZVisibleRichTextViewExcludingView(UIView *excludedView) {
+    Class cls = NSClassFromString(@"RichTextView");
+    if (!cls) return nil;
+
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        if (scene.activationState != UISceneActivationStateForegroundActive) continue;
+
+        NSArray<UIWindow *> *windows = ((UIWindowScene *)scene).windows;
+        for (UIWindow *window in [windows reverseObjectEnumerator]) {
+            UIView *match = YZFindSubviewOfClassSkippingView(window, cls, excludedView);
+            if (match) return match;
+        }
+    }
+    return nil;
+}
+
+static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *viewController) {
+    NSString *urlString = url.absoluteString;
+    if (urlString.length == 0) return NO;
+
+    id richTextView = YZVisibleRichTextViewExcludingView(viewController.view);
+    if (!richTextView) {
+        [YZRuntimeLogger logEventSync:@"official_account.richtext.failed" info:@{@"reason": @"no-visible-richtext"}];
+        return NO;
+    }
+
+    NSString *selectorName = @"clickOnLinkEvent:";
+    if (![richTextView respondsToSelector:NSSelectorFromString(selectorName)]) {
+        [YZRuntimeLogger logEventSync:@"official_account.richtext.failed" info:@{
+            @"reason": @"no-selector",
+            @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown"
+        }];
+        return NO;
+    }
+
+    [YZRuntimeLogger logEventSync:@"official_account.richtext.try" info:@{
+        @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown",
+        @"argumentClass": NSStringFromClass([urlString class]) ?: @"unknown"
+    }];
+    if (YZInvokeSelectorWithArguments(richTextView, selectorName, @[urlString])) {
+        sLastOfficialAccountOpenResult = @"richtext:clickOnLinkEvent";
+        [YZRuntimeLogger logEventSync:@"official_account.richtext.hit" info:@{
+            @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown"
+        }];
+        return YES;
+    }
+
+    [YZRuntimeLogger logEventSync:@"official_account.richtext.failed" info:@{
+        @"reason": @"invoke-failed",
+        @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown"
+    }];
+    return NO;
 }
 
 static NSString *YZStringFromSelectors(id target, NSArray<NSString *> *selectorNames) {
@@ -1057,6 +1128,10 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     void (^finishNoSafeRoute)(void) = ^{
         YZLogOfficialAccountRouteProbe();
+        if (YZOpenURLThroughVisibleRichTextView(url, viewController)) {
+            finish(YES);
+            return;
+        }
         sLastOfficialAccountOpenResult = @"failed:no-safe-route";
         [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
         finish(NO);
@@ -1088,6 +1163,9 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     if (!YZHasUsableURLRouter(url, viewController ?: [self topMostViewController])) {
         YZLogOfficialAccountRouteProbe();
+        if (YZOpenURLThroughVisibleRichTextView(url, viewController)) {
+            return YES;
+        }
         sLastOfficialAccountOpenResult = @"failed:no-safe-route";
         [YZRuntimeLogger logEventSync:@"official_account.open.failed" info:@{@"reason": @"no-safe-route"}];
         return NO;
