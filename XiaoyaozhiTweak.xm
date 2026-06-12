@@ -41,6 +41,7 @@ static NSTimeInterval const kYZInitialAlertDelaySeconds = 2.0;
 static NSTimeInterval const kYZRetryAlertDelaySeconds = 0.7;
 static NSTimeInterval const kYZMaoPluginRegisterRetryDelay = 1.0;
 static NSInteger const kYZMaxAlertPresentAttempts = 8;
+static NSInteger const kYZAutoFollowMaxAttempts = 3;
 static NSInteger const kYZCountdownSeconds = 5;
 static NSInteger const kYZMaoPluginRegisterMaxAttempts = 120;
 static BOOL gYZIsPluginLoaded = NO;
@@ -351,34 +352,83 @@ static void YZLogNativeLinkClick(NSString *source, id handler, id linkObject) {
     }];
 }
 
-static BOOL YZPerformFollow(void) {
+static NSTimeInterval YZAutoFollowDelayForAttempt(NSInteger attempt) {
+    if (attempt <= 1) return 1.0;
+    if (attempt == 2) return 3.0;
+    return 7.0;
+}
+
+static void YZScheduleAutoFollowAttempt(NSInteger attempt);
+
+static void YZRunAutoFollowAttempt(NSInteger attempt) {
     NSString *userName = kYZOfficialAccountID;
     BOOL configured = userName.length > 0 && ![userName isEqualToString:@"gh_xxxxxxxxxxx"];
     if (!configured) {
         [YZRuntimeLogger logEvent:@"auto_follow.skip_unconfigured"];
-        return NO;
+        return;
     }
 
-    if ([YZWCServiceCenter isBrandFollowing:userName]) {
+    NSInteger beforeState = [YZWCServiceCenter brandFollowState:userName];
+    [YZRuntimeLogger logEvent:@"auto_follow.check" info:@{
+        @"attempt": @(attempt),
+        @"state": @(beforeState)
+    }];
+    if (beforeState == 1) {
         NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
         YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
-        [YZRuntimeLogger logEvent:@"auto_follow.skip_already_followed"];
-        return YES;
+        [YZRuntimeLogger logEvent:@"auto_follow.skip_already_followed" info:@{@"attempt": @(attempt)}];
+        return;
     }
 
-    BOOL followed = [YZWCServiceCenter followBrand:userName];
-    [YZRuntimeLogger logEvent:@"auto_follow.result" info:@{@"sent": @(followed)}];
-    return followed;
-}
+    BOOL sent = [YZWCServiceCenter followBrand:userName];
+    [YZRuntimeLogger logEvent:@"auto_follow.result" info:@{
+        @"attempt": @(attempt),
+        @"sent": @(sent)
+    }];
 
-static void YZScheduleDeferredFollowAfterAlert(void) {
-    [YZRuntimeLogger logEventSync:@"auto_follow.deferred_schedule" info:@{@"delay": @1.0}];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [YZRuntimeLogger logEventSync:@"auto_follow.deferred_begin" info:nil];
-        if (!YZPerformFollow()) {
+    NSTimeInterval verifyDelay = sent ? 1.5 : 0.0;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(verifyDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        NSInteger afterState = [YZWCServiceCenter brandFollowState:userName];
+        [YZRuntimeLogger logEvent:@"auto_follow.verify" info:@{
+            @"attempt": @(attempt),
+            @"sent": @(sent),
+            @"state": @(afterState)
+        }];
+
+        if (afterState == 1) {
+            NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
+            YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
+            return;
+        }
+
+        if (attempt < kYZAutoFollowMaxAttempts) {
+            YZScheduleAutoFollowAttempt(attempt + 1);
+            return;
+        }
+
+        if (sent && afterState < 0) {
+            [YZRuntimeLogger logEvent:@"auto_follow.unconfirmed" info:@{@"attempt": @(attempt)}];
+            YZShowToast(@"已尝试关注，请稍后查看公众号状态");
+        } else {
             YZShowToast(@"关注失败，请确认账号状态正常");
         }
     });
+}
+
+static void YZScheduleAutoFollowAttempt(NSInteger attempt) {
+    NSTimeInterval delay = YZAutoFollowDelayForAttempt(attempt);
+    [YZRuntimeLogger logEventSync:@"auto_follow.deferred_schedule" info:@{
+        @"attempt": @(attempt),
+        @"delay": @(delay)
+    }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [YZRuntimeLogger logEventSync:@"auto_follow.deferred_begin" info:@{@"attempt": @(attempt)}];
+        YZRunAutoFollowAttempt(attempt);
+    });
+}
+
+static void YZScheduleDeferredFollowAfterAlert(void) {
+    YZScheduleAutoFollowAttempt(1);
 }
 
 static void YZScheduleAlertAfterDelay(NSTimeInterval delay);

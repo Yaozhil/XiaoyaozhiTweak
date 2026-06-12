@@ -6,7 +6,7 @@
 - 本地 `main` 与远端 `origin/main` 已同步到本次“投喂一下”打赏跳转与短日志改动。
 - 最近一次 GitHub Actions 构建成功：https://github.com/Yaozhil/XiaoyaozhiTweak/actions/runs/27398531114
 - 用户已确认：底部胶囊跳转公众号主页正常，返回后插件功能列表正常。
-- 当前正在完善“投喂一下”：目标是点击后直接进入微信打赏页，且失败时留下明确运行日志。
+- 当前已按客户版收口：主菜单第二项由“运行日志”改为“常用功能”，点击仅震动并提示“暂未开放”；公开运行日志复制入口已移除，内部滚动日志仍保留用于后续排查。
 - 用户真机反馈“投喂一下”点击显示失败，日志确认为 `最近打赏路由: failed:no-image`，说明安装后未能从文件路径读取打赏码。
 - 用户真机反馈内嵌打赏码后点击只有震动、无视觉反应；日志已到 `donation.open.hit` 且 `route=scan:ScanQRCodeLogicController`，说明裸 `scanOnePicture:` 被调用但没有完成结果展示。
 - 用户真机反馈完整扫码初始化后会弹出微信 `local error.`，点确定后黑屏卡死；日志显示 `route=initWithParams:params:codeTypeFromScene` 但 `host=YZGlassSheetController`，说明扫码链路进入了微信本地错误页，且插件面板提前 dismiss 造成黑屏。
@@ -17,7 +17,7 @@
 - 首次弹窗“已知晓”后自动关注保留，当前可命中品牌号关注 selector。
 - 底部胶囊使用 `richtext:synthetic` 打开公众号主页。
 - 已确认关注时点击底部胶囊提示 `已关注公众号`；无法确认时仍按“去关注”入口处理。
-- 运行日志入口可复制本地反馈，用于后续真机排查。
+- 公开运行日志入口已移除，客户版不再展示“运行日志”菜单或复制反馈入口。
 - 已避开文件传输助手消息、WebView/A8Key/AppDelegate/外部 scheme、全类扫描等高风险路线。
 - “投喂一下”已接入安装包内打赏码加载与微信 `ScanQRCodeLogicController scanOnePicture:` 路线；运行反馈新增“最近打赏路由”。
 - 运行日志已改为短滚动：复制反馈只包含最近 40 条，单行会截断，避免历史功能日志过长导致无法复制。
@@ -25,11 +25,12 @@
 - 已补充更完整的扫码初始化：优先使用微信原生 host + `ScanQRCodeLogicParams` + `initWithViewController:logicParams:`，并在扫码命中后移除插件面板，避免结果页被面板盖住；仍不 present 私有扫码控制器。
 - 已撤销扫码命中后自动 dismiss，避免 `local error` 后露出黑屏；内嵌打赏码改为原始 PNG，避免 JPEG 压缩破坏微信打赏码识别；微信 host 查找改为递归寻找原生导航并跳过插件控制器。
 - 已继续推进扫码结果链：当微信根导航当前可见页是插件控制器时回退到导航栈里的上一个原生控制器，并尝试通过 `ScanQRCodeResultsMgr setScanLogicController:` 连接结果管理器。
+- 首次弹窗“已知晓”后的自动关注已从单次尝试改为最多 3 次温和重试：每次先检测是否已关注，发送关注请求后延迟复查，未确认时再按 1s/3s/7s 节奏继续尝试。
 
 ## 下一步
 
 - 等待 GitHub Actions 构建结果。
-- 真机复测“投喂一下”，重点看 `donation.open.hit` 的 `host` 是否不再是 `YZGlassSheetController`，`resultsMgr/linked` 是否命中，以及是否仍出现 `local error.`。
+- 用户反馈“投喂一下”非常丝滑；后续维护需保持当前 `host=WCPluginsViewController`、`resultsMgr=ScanQRCodeResultsMgr`、`linked=true` 链路。
 
 ## 验证
 

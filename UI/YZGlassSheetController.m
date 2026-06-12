@@ -418,7 +418,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
     // ====== 主菜单 ======
     if (self.currentPage == 0) {
-        cell.textLabel.text = @[@"到期信息", @"运行日志", @"投喂一下"][ip.row];
+        cell.textLabel.text = @[@"到期信息", @"常用功能", @"投喂一下"][ip.row];
         cell.textLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightRegular];
         cell.detailTextLabel.text = @"";
         cell.accessoryView = [self arrowView];
@@ -562,7 +562,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         else if (ip.row == 1) {
             UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
             [gen impactOccurred];
-            [self copyRuntimeFeedback];
+            [self showToast:@"暂未开放"];
         }
         else if (ip.row == 2) [self showRewardSheet];
         return;
@@ -831,7 +831,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
             @"route": [YZWCServiceCenter lastDonationOpenResult] ?: @"none"
         }];
         if (!opened) {
-            [self showToast:@"打开打赏页失败，已记录运行日志"];
+            [self showToast:@"打开打赏页失败，请稍后再试"];
         }
     }];
 }
@@ -861,37 +861,6 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
         return;
     }
     [self openManualFollowFallback];
-}
-
-- (NSString *)runtimeFeedbackReport {
-    NSString *followText = @"无法确认";
-    if (self.followState == 1) followText = @"已关注";
-    else if (self.followState == 0) followText = @"未关注";
-
-    NSMutableArray<NSString *> *lines = [NSMutableArray array];
-    [lines addObject:@"小杳知运行反馈"];
-    [lines addObject:[NSString stringWithFormat:@"插件版本: %@", [YZPluginLifecycle sharedInstance].pluginVersion ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"微信版本: %@", [YZWCServiceCenter getWeChatVersion] ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"微信包名: %@", [YZWCServiceCenter getBundleIdentifier] ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"系统版本: iOS %@", [YZWCServiceCenter getSystemVersion] ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"设备标识: %@", [YZWCServiceCenter getDeviceModel] ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"证书类型: %@", [YZWCServiceCenter getCertificateType] ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"证书到期: %@", [YZWCServiceCenter getCertificateExpirationDate] ?: @"未知"]];
-    [lines addObject:[NSString stringWithFormat:@"公众号状态: %@ (%ld)", followText, (long)self.followState]];
-    [lines addObject:[NSString stringWithFormat:@"最近路由: %@", [YZWCServiceCenter lastOfficialAccountOpenResult] ?: @"none"]];
-    [lines addObject:[NSString stringWithFormat:@"最近打赏路由: %@", [YZWCServiceCenter lastDonationOpenResult] ?: @"none"]];
-    [lines addObject:@"---- 最近运行日志（最多40条） ----"];
-
-    NSString *logText = [YZRuntimeLogger recentLogText];
-    [lines addObject:logText.length > 0 ? logText : @"暂无运行日志"];
-    return [lines componentsJoinedByString:@"\n"];
-}
-
-- (void)copyRuntimeFeedback {
-    [self refreshFollowStatus];
-    UIPasteboard.generalPasteboard.string = [self runtimeFeedbackReport];
-    [YZRuntimeLogger logEvent:@"sheet.runtime_feedback.copied"];
-    [self showToast:@"运行日志已复制，可直接反馈"];
 }
 
 - (void)showToast:(NSString *)msg {

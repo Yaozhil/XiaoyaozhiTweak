@@ -9,6 +9,7 @@
 - 内嵌打赏码后真机日志显示 `donation.open.hit`，但视觉上只有震动；说明裸 `ScanQRCodeLogicController scanOnePicture:` 可能只启动识别、不负责展示结果，或结果页被插件面板遮挡。当前已改为微信原生 host + `ScanQRCodeLogicParams` 初始化，并在命中后移除插件面板；仍禁止恢复旧的私有扫码控制器 present 路线。
 - 完整扫码初始化真机进入微信 `local error.`，点确定后黑屏卡死；当时日志为 `route=initWithParams:params:codeTypeFromScene` 且 `host=YZGlassSheetController`。当前已撤销命中后 dismiss、内嵌图改为原始 PNG、host 查找改为跳过插件控制器的微信原生导航递归查找。后续不得再用压缩 JPEG 打赏码作为识别源，也不得在未确认页面成功展示前关闭插件面板。
 - WCEhance 二进制中存在 `ScanQRCodeResultsMgr` 与 `setScanLogicController:` 线索；当前已补充结果管理器连接。若下一版 `linked=false` 或仍 `local error.`，需要继续定位 `NewQRCodeScanner` 与结果 manager 的真实 delegate/分发 selector。
+- 用户反馈疑似成功时，关键日志为 `host=WCPluginsViewController`、`resultsMgr=ScanQRCodeResultsMgr`、`linked=true`。后续维护“投喂一下”时不得退回只调用裸 `scanOnePicture:`；成功链路需要保留原始 PNG 打赏码、微信原生 host、`ScanQRCodeLogicParams` 初始化和结果管理器连接。
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。
 - 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”，动态枚举出的微信 Web/WebView/load/jump 分发服务真机仍会黑屏。当前底部入口保留跳转，但只尝试固定白名单里的高层 URL/Link router，命不中时复制公众号名称并提示搜索关注。
@@ -27,14 +28,14 @@
 
 ## 风险与待确认
 
-- 新增运行日志只做本地滚动记录与一键复制反馈，不主动上传；后续真机需确认“运行日志”菜单能成功复制报告，且报告里能看到 `official_account.open.*`、`brand_follow_state.*`、`sheet.follow_tap.*` 等关键事件。
+- 客户版已移除公开“运行日志”菜单与一键复制反馈入口；内部 `YZRuntimeLogger` 仍保留。后续若需要继续真机排查，应临时恢复隐藏入口或增加开发版开关，避免把诊断入口暴露给客户。
 - `Core/YZConfigManager.m` 中配置写入 `plugin_config` 字典，但 `valueForKey:` 单项读取先查同 suite 的顶层 key，再回落到启动时合并后的 `sDefaultConfig`；运行中通过 `setValue:forKey:` 改配置后，当前进程内可能读不到最新值，表现为开关或参数需要重启才生效。
 - 当前 `Guard/YZCrashGuard.m` 的 signal handler 中会调用 Objective-C、日志格式化和文件写入；这类操作在真实 signal 崩溃上下文中不安全，可能让崩溃记录本身变成额外风险。后续建议改为轻量标记/下次启动汇总。
 - 当前隐私声明/报告包含“不发起网络请求”，但 `WeChat/YZWCServiceCenter.m` 的头像兜底逻辑存在 `NSURLSession` 下载头像路径；需要二选一：要么去掉网络下载头像兜底，要么把隐私说明改成“仅在微信沙盒内、为头像兜底读取微信头像 URL”并允许用户关闭。
-- `UI/YZGlassSheetController.m` 主菜单“常用功能”仍展示右箭头，但点击只震动并 toast“暂未开放”；作为重度用户体验会误以为入口损坏，建议改成禁用态、移除箭头，或升级为真实诊断入口。
+- `UI/YZGlassSheetController.m` 主菜单“常用功能”按客户版需求保留入口，点击只震动并 toast“暂未开放”；后续若长期不开放，建议改成真实常用功能页或禁用态，避免客户误以为入口损坏。
 - 公众号自动关注依赖微信私有 `CContactMgr`/品牌号相关 selector；已扩大兼容候选并加入 `CContact/MMContact` 参数兜底，但不同微信版本仍可能变更 selector 或内部校验。
 - 新接入的 `BrandDirectlyOperateContactLogic -> tryAddBrandContact:context:` 来自参考插件二进制线索，属于更贴近微信品牌号逻辑的自动关注路径；但上下文字段仍是按可见类名和常见 setter/KVC 保守填充，需要 GitHub Actions 构建和真机验证确认不同微信版本是否命中。
-- `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；当前已恢复首次弹窗调用该方法，但微信服务端是否最终完成关注，需要正常账号真机验证。
+- `followBrand:` 只能可靠判断“关注请求是否已成功发出/selector 是否命中”；当前首次弹窗自动关注已增加最多 3 次温和重试和延迟复查，但微信服务端是否最终完成关注，仍需要正常账号真机验证。
 - `brandFollowState:` 只信任 subscribe/subscribed 类明确状态；若某微信版本完全不暴露关注状态，会返回无法确认。前台保留状态布局，但只在确认已关注时显示“已关注”，其他情况显示“去关注”。
 - 用户自己的已关注账号曾被显示为未关注，说明 subscribe/subscribed 字段并非所有微信版本都会暴露真实状态；当前底部入口不再显示“未关注”字样。
 - 参考插件 `com.shtm.xos_1.4.5_iphoneos-arm64e.deb` 为 `data.tar.lzma`，当前 Windows 环境缺少 lzma/xz 工具，暂未能读取内部动态库；`微信助手_3.9-5_无根.deb` 可读取并已提取 selector 线索。
