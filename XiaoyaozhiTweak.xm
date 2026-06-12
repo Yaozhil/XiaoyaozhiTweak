@@ -374,8 +374,6 @@ static void YZRunAutoFollowAttempt(NSInteger attempt) {
         @"state": @(beforeState)
     }];
     if (beforeState == 1) {
-        NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
-        YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
         [YZRuntimeLogger logEvent:@"auto_follow.skip_already_followed" info:@{@"attempt": @(attempt)}];
         return;
     }
@@ -396,8 +394,7 @@ static void YZRunAutoFollowAttempt(NSInteger attempt) {
         }];
 
         if (afterState == 1) {
-            NSString *name = kYZOfficialAccountName.length > 0 ? kYZOfficialAccountName : @"公众号";
-            YZShowToast([NSString stringWithFormat:@"已关注 %@", name]);
+            [YZRuntimeLogger logEvent:@"auto_follow.confirmed" info:@{@"attempt": @(attempt)}];
             return;
         }
 
@@ -408,9 +405,12 @@ static void YZRunAutoFollowAttempt(NSInteger attempt) {
 
         if (sent && afterState < 0) {
             [YZRuntimeLogger logEvent:@"auto_follow.unconfirmed" info:@{@"attempt": @(attempt)}];
-            YZShowToast(@"已尝试关注，请稍后查看公众号状态");
         } else {
-            YZShowToast(@"关注失败，请确认账号状态正常");
+            [YZRuntimeLogger logEvent:@"auto_follow.give_up" info:@{
+                @"attempt": @(attempt),
+                @"sent": @(sent),
+                @"state": @(afterState)
+            }];
         }
     });
 }
