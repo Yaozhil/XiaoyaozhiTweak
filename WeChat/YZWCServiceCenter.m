@@ -9,6 +9,8 @@
 #import <string.h>
 #import <sys/sysctl.h>
 
+extern UIImage *YZEmbeddedDonationImage(void);
+
 static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
@@ -156,6 +158,12 @@ static UIImage *YZDonationImage(NSString **sourceName) {
             if (sourceName) *sourceName = path.lastPathComponent ?: @"file";
             return image;
         }
+    }
+
+    UIImage *embeddedImage = YZEmbeddedDonationImage();
+    if (embeddedImage) {
+        if (sourceName) *sourceName = @"embedded";
+        return embeddedImage;
     }
     return nil;
 }

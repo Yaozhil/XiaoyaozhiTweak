@@ -7,6 +7,7 @@
 - 最近一次 GitHub Actions 构建成功：https://github.com/Yaozhil/XiaoyaozhiTweak/actions/runs/27398531114
 - 用户已确认：底部胶囊跳转公众号主页正常，返回后插件功能列表正常。
 - 当前正在完善“投喂一下”：目标是点击后直接进入微信打赏页，且失败时留下明确运行日志。
+- 用户真机反馈“投喂一下”点击显示失败，日志确认为 `最近打赏路由: failed:no-image`，说明安装后未能从文件路径读取打赏码。
 
 ## 已完成
 
@@ -18,11 +19,12 @@
 - 已避开文件传输助手消息、WebView/A8Key/AppDelegate/外部 scheme、全类扫描等高风险路线。
 - “投喂一下”已接入安装包内打赏码加载与微信 `ScanQRCodeLogicController scanOnePicture:` 路线；运行反馈新增“最近打赏路由”。
 - 运行日志已改为短滚动：复制反馈只包含最近 40 条，单行会截断，避免历史功能日志过长导致无法复制。
+- 已新增内嵌打赏码 provider：优先读取安装包文件，缺失时回落到 dylib 内嵌图片，避免签名/安装流程漏掉 `layout/` 资源后直接 `no-image`。
 
 ## 下一步
 
 - 等待 GitHub Actions 构建结果。
-- 真机复测“投喂一下”，重点看 `donation.open.*` 与 `sheet.reward_tap.*` 日志。
+- 真机复测“投喂一下”，重点看 `donation.open.image {"source":"embedded"}` 后是否继续出现 `donation.open.hit`。
 
 ## 验证
 
