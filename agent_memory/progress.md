@@ -24,11 +24,12 @@
 - 已新增内嵌打赏码 provider：优先读取安装包文件，缺失时回落到 dylib 内嵌图片，避免签名/安装流程漏掉 `layout/` 资源后直接 `no-image`。
 - 已补充更完整的扫码初始化：优先使用微信原生 host + `ScanQRCodeLogicParams` + `initWithViewController:logicParams:`，并在扫码命中后移除插件面板，避免结果页被面板盖住；仍不 present 私有扫码控制器。
 - 已撤销扫码命中后自动 dismiss，避免 `local error` 后露出黑屏；内嵌打赏码改为原始 PNG，避免 JPEG 压缩破坏微信打赏码识别；微信 host 查找改为递归寻找原生导航并跳过插件控制器。
+- 已继续推进扫码结果链：当微信根导航当前可见页是插件控制器时回退到导航栈里的上一个原生控制器，并尝试通过 `ScanQRCodeResultsMgr setScanLogicController:` 连接结果管理器。
 
 ## 下一步
 
 - 等待 GitHub Actions 构建结果。
-- 真机复测“投喂一下”，重点看 `donation.open.hit` 的 `host` 是否不再是 `YZGlassSheetController`，以及是否仍出现 `local error.`。
+- 真机复测“投喂一下”，重点看 `donation.open.hit` 的 `host` 是否不再是 `YZGlassSheetController`，`resultsMgr/linked` 是否命中，以及是否仍出现 `local error.`。
 
 ## 验证
 

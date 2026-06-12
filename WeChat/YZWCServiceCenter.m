@@ -29,6 +29,7 @@ static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com
 static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController);
 static UINavigationController *YZWeChatRootNavController(void);
 static UINavigationController *YZFindNavigationController(UIViewController *controller);
+static BOOL YZIsPluginViewController(UIViewController *controller);
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
     if ([object isKindOfClass:UIImage.class]) return object;
@@ -173,12 +174,36 @@ static UIImage *YZDonationImage(NSString **sourceName) {
 static UIViewController *YZDonationHostViewController(UIViewController *fallback) {
     UINavigationController *nav = YZWeChatRootNavController();
     UIViewController *host = nav.visibleViewController ?: nav.topViewController;
-    if (host) return host;
+    if (host && !YZIsPluginViewController(host)) return host;
+    for (UIViewController *candidate in [nav.viewControllers reverseObjectEnumerator]) {
+        if (!YZIsPluginViewController(candidate)) return candidate;
+    }
     if (fallback && ![NSStringFromClass(fallback.class) isEqualToString:@"YZGlassSheetController"]) {
         if (fallback.navigationController) return fallback.navigationController.visibleViewController ?: fallback.navigationController.topViewController;
         return fallback;
     }
     return nil;
+}
+
+static id YZDonationScanResultsManager(void) {
+    id service = [YZWCRuntime getService:@"ScanQRCodeResultsMgr"];
+    if (service) return service;
+
+    Class mgrClass = NSClassFromString(@"ScanQRCodeResultsMgr");
+    if (!mgrClass) return nil;
+
+    Class contextClass = NSClassFromString(@"MMContext");
+    id context = YZCallNoArgSelector(contextClass, @"activeUserContext");
+    id center = YZCallNoArgSelector(context, @"serviceCenter");
+    id result = YZCallOneArgSelector(center, @"getService:", mgrClass);
+    if (result) return result;
+
+    Class serviceCenterClass = NSClassFromString(@"MMServiceCenter");
+    id defaultCenter = YZCallNoArgSelector(serviceCenterClass, @"defaultCenter");
+    result = YZCallOneArgSelector(defaultCenter, @"getService:", mgrClass);
+    if (result) return result;
+
+    return YZCallNoArgSelector(mgrClass, @"sharedInstance") ?: YZCallNoArgSelector(mgrClass, @"defaultManager");
 }
 
 static id YZNewDonationLogicParams(NSString **routeName) {
@@ -293,6 +318,8 @@ static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *view
     if (host) {
         YZInvokeSelectorWithArguments(controller, @"setHostViewController:", @[host]);
     }
+    id resultsManager = YZDonationScanResultsManager();
+    BOOL linkedResultsManager = YZInvokeSelectorWithArguments(resultsManager, @"setScanLogicController:", @[controller]);
 
     sDonationScanController = controller;
     BOOL sent = YZInvokeSelectorWithArguments(controller, @"scanOnePicture:", @[image]);
@@ -311,7 +338,9 @@ static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *view
         @"class": NSStringFromClass([controller class]) ?: @"unknown",
         @"route": initRoute ?: @"unknown",
         @"selector": @"scanOnePicture:",
-        @"host": host ? NSStringFromClass(host.class) : @"nil"
+        @"host": host ? NSStringFromClass(host.class) : @"nil",
+        @"resultsMgr": resultsManager ? NSStringFromClass([resultsManager class]) : @"nil",
+        @"linked": @(linkedResultsManager)
     }];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
