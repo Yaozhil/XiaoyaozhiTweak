@@ -96,3 +96,4 @@
 - 本机 Windows 当前未检测到 `make`、`clang`、`dpkg-deb`，无法本地完成 Theos 编译验证；需以 GitHub Actions 为构建验证。
 - 本次运行日志改动已运行 `git diff --check`，无空白错误；已搜索活跃代码，未重新引入 `weixin://`、`WKWebView`、`MMWebView`、`WCWebView`、`Universal Link`、`openWebView`、`loadURL`、`jump` 等禁用/高风险路径。
 - 本次 synthetic RichTextView 改动已运行 `git diff --check`，无空白错误；已搜索活跃代码，未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描路线。
+- GitHub Actions 对提交 `2959309` 构建失败，错误是 `YZWCServiceCenter.m` 中新增 helper 位于 `@implementation` 前，编译器尚未知 `+topMostViewController` 和 `YZShouldDismissBeforePresenting`。已补 `YZWCServiceCenter` 私有类扩展和 `YZShouldDismissBeforePresenting` 前向声明；该修复只影响编译声明，不改变运行逻辑。

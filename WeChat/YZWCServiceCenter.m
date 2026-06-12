@@ -18,6 +18,12 @@ static id sSyntheticRichTextLinkHandler = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124";
 
+@interface YZWCServiceCenter ()
++ (UIViewController *)topMostViewController;
+@end
+
+static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController);
+
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
     if ([object isKindOfClass:UIImage.class]) return object;
