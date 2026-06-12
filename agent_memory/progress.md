@@ -42,6 +42,7 @@
 - 用户最新反馈确认底部胶囊已经可跳转公众号主页，日志显示 `richtext:synthetic`、`official_account.richtext.hit {"source":"synthetic"}`；但从公众号主页返回后，原插件功能列表无法点击，需重新进入插件才恢复。判断为 synthetic RichTextView 是挂在 `YZGlassSheetController` 上触发，返回后插件面板进入半失活状态。当前改为无安全 URL router 时先 `dismissAnimatedWithCompletion:` 收起插件，再在微信主界面延迟 0.15 秒创建/触发 synthetic RichTextView；关注状态 UI 保持用户要求：确认 `state=1` 显示“已关注”，不确定 `state=-1` 仍显示“去关注”。
 - 用户补充要求：如果已确认关注，点击底部胶囊显示“已关注公众号”。当前在 `UI/YZGlassSheetController.m` 的 `handleFollowTap` 中仅当 `followState == 1` 时记录 `sheet.follow_tap.already_followed` 并 toast “已关注公众号”；`-1` 无法确认仍按“去关注”入口跳转公众号主页。
 - 用户最新反馈显示“先收起插件再触发 synthetic RichTextView”会重新导致黑屏且无法返回；日志中虽出现 `sheet.dismiss`，但真实点击 hook 的 top 仍为 `YZGlassSheetController`，说明该顺序在真机上不安全。当前撤回 `dismiss_first` 路线，恢复先触发已验证可跳转的 `richtext:synthetic` 再延迟 dismiss；同时在 `presentInWindow:` 中显式恢复 `self.view.userInteractionEnabled = YES`，修复上一版从公众号主页返回后插件列表复用旧 view 导致无法点击的问题。
+- 用户复测 `be72817` 后底部仍可跳公众号主页，但从公众号主页返回后插件功能列表依旧无法点击；日志显示 `richtext:synthetic` 命中后仍有 `sheet.dismiss`，而真实点击 top 为 `YZGlassSheetController`。当前判断为公众号页实际压在插件页之上，后续 `sheet.dismiss` 禁用了底层插件 view，返回后看到的是被禁用的插件页。已删除 `YZDismissControllerAfterRichTextHit` 和命中后的 dismiss 调用，让 synthetic 跳转后保留插件页，期望从公众号页返回后功能列表可直接点击。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。
@@ -102,3 +103,4 @@
 - GitHub Actions 对提交 `2959309` 构建失败，错误是 `YZWCServiceCenter.m` 中新增 helper 位于 `@implementation` 前，编译器尚未知 `+topMostViewController` 和 `YZShouldDismissBeforePresenting`。已补 `YZWCServiceCenter` 私有类扩展和 `YZShouldDismissBeforePresenting` 前向声明；该修复只影响编译声明，不改变运行逻辑。
 - 本次“先收起插件再触发 synthetic RichTextView”改动已运行 `git diff --check`，无空白错误；敏感路线扫描未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描。
 - 本次撤回 `dismiss_first` 并恢复插件 view 触摸改动已运行 `git diff --check`，无空白错误；敏感路线扫描未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描。
+- 本次删除 richtext 命中后的 `sheet.dismiss` 已运行 `git diff --check`，无空白错误；敏感路线扫描未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描。

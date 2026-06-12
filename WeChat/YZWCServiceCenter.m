@@ -336,18 +336,6 @@ static id YZCreateSyntheticRichTextView(NSURL *url, UIViewController *viewContro
     return richTextView;
 }
 
-static void YZDismissControllerAfterRichTextHit(UIViewController *viewController) {
-    if (!YZShouldDismissBeforePresenting(viewController)) return;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
-        if ([viewController respondsToSelector:customDismissSel]) {
-            ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, nil);
-        } else {
-            [viewController dismissViewControllerAnimated:YES completion:nil];
-        }
-    });
-}
-
 static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *viewController) {
     NSString *urlString = url.absoluteString;
     if (urlString.length == 0) return NO;
@@ -383,7 +371,6 @@ static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *vi
             @"handlerClass": NSStringFromClass([richTextView class]) ?: @"unknown",
             @"source": synthetic ? @"synthetic" : @"existing"
         }];
-        YZDismissControllerAfterRichTextHit(viewController);
         return YES;
     }
 
