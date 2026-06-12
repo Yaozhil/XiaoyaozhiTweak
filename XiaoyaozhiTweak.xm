@@ -26,7 +26,6 @@
 // MARK: - 常量
 // ============================================================
 
-static NSString *const kYZPluginActivationKey = @"Xiaoyaozhi_LastActivation";
 static NSString *const kYZShownKey = @"YaoZhiAlertShown01";
 static NSString *const kYZAlertTitlePrefix = @"杳知定制 v";
 static NSString *const kYZAlertContent = @"\n- 欢迎体验本产品（小杳专属）\n\n- 使用时 有任何问题 请及时反馈\n\n   ♡感谢支持♡\n\n- 唯一联系：Rouneed";
@@ -44,7 +43,6 @@ static NSInteger const kYZAutoFollowMaxAttempts = 3;
 static NSInteger const kYZCountdownSeconds = 5;
 static NSInteger const kYZMaoPluginRegisterMaxAttempts = 120;
 static BOOL gYZIsPluginLoaded = NO;
-static YZGlassSheetController *gSheetController = nil;
 static BOOL gYZAlertScheduled = NO;
 static BOOL gYZAlertPresenting = NO;
 static BOOL gYZCountdownCancelled = NO;
@@ -57,7 +55,6 @@ static id gYZBecomeActiveToken = nil;
 static id gYZDidLoadToken = nil;
 static id gYZWillUnloadToken = nil;
 static id gYZMemoryWarningToken = nil;
-static id gYZDidEnterBackgroundToken = nil;
 static char kYZWeChatSettingsEntryInjectedKey;
 
 // ============================================================
@@ -86,45 +83,6 @@ static __attribute__((unused)) UIWindow *YZKeyWindow(void) {
     id<UIApplicationDelegate> delegate = app.delegate;
     if ([delegate respondsToSelector:@selector(window)]) return delegate.window;
     return nil;
-}
-
-static __attribute__((unused)) void YZShowGlassSheet(void) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // 内存警告时取消展示
-        if (NSProcessInfo.processInfo.isLowPowerModeEnabled) {
-            [YZRuntimeLogger logEvent:@"show_sheet.skip_low_power"];
-            return;
-        }
-
-        // 防止重复弹出
-        if (gSheetController && (gSheetController.isPresented || gSheetController.view.superview)) {
-            [YZRuntimeLogger logEvent:@"show_sheet.skip_existing"];
-            return;
-        }
-
-        if (![YZCrashGuard checkAndLogCrashForLocation:@"showSheet"]) {
-            [YZRuntimeLogger logEvent:@"show_sheet.skip_crash_guard"];
-            return;
-        }
-
-        gSheetController = [[YZGlassSheetController alloc] init];
-        [gSheetController presentFromTopViewController];
-        [YZRuntimeLogger logEvent:@"show_sheet.presented"];
-
-        // 更新激活时间戳
-        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.rouneed.xiaoyaozhi"];
-        [defaults setDouble:[[NSDate date] timeIntervalSince1970] forKey:kYZPluginActivationKey];
-        [defaults synchronize];
-    });
-}
-
-static void YZDismissGlassSheetIfNeeded(void) {
-    if (!gSheetController) return;
-    if (gSheetController.isPresented || gSheetController.view.superview) {
-        [gSheetController dismissAnimated];
-        [YZRuntimeLogger logEvent:@"show_sheet.dismissed"];
-    }
-    gSheetController = nil;
 }
 
 static NSString *YZShownKeyForCurrentInstall(void) {
@@ -296,44 +254,6 @@ static void YZUpdateCountdownTitle(UIAlertAction *action, NSInteger remaining, B
             YZSetActionTitleSafely(action, kYZAlertButtonText);
         }
         action.enabled = YES;
-    });
-}
-
-static void YZShowToast(NSString *message) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *keyWindow = YZKeyWindow();
-        if (!keyWindow || message.length == 0) return;
-
-        UILabel *toast = [[UILabel alloc] init];
-        toast.text = message;
-        toast.textAlignment = NSTextAlignmentCenter;
-        toast.textColor = UIColor.whiteColor;
-        toast.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.78];
-        toast.font = [UIFont systemFontOfSize:13];
-        toast.layer.cornerRadius = 10;
-        toast.clipsToBounds = YES;
-        toast.alpha = 0;
-
-        CGSize size = [message boundingRectWithSize:CGSizeMake(260, 60)
-                                            options:NSStringDrawingUsesLineFragmentOrigin
-                                         attributes:@{NSFontAttributeName: toast.font}
-                                            context:nil].size;
-        CGFloat w = MIN(ceil(size.width) + 36, 280);
-        CGFloat h = ceil(size.height) + 20;
-        toast.frame = CGRectMake((keyWindow.bounds.size.width - w) / 2.0,
-                                 keyWindow.bounds.size.height - 140,
-                                 w, h);
-        [keyWindow addSubview:toast];
-
-        [UIView animateWithDuration:0.22 animations:^{
-            toast.alpha = 1;
-        } completion:^(__unused BOOL done1) {
-            [UIView animateWithDuration:0.22 delay:1.8 options:UIViewAnimationOptionCurveEaseIn animations:^{
-                toast.alpha = 0;
-            } completion:^(__unused BOOL done2) {
-                [toast removeFromSuperview];
-            }];
-        }];
     });
 }
 
@@ -749,7 +669,6 @@ static void YZXiaoyaozhiInit(void) {
                                                   object:nil queue:[NSOperationQueue mainQueue]
                                               usingBlock:^(__unused NSNotification *note) {
                 gYZIsPluginLoaded = NO;
-                YZDismissGlassSheetIfNeeded();
                 [[YZMemoryCache shared] removeAllObjects];
                 // 移除所有 observer
                 NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
@@ -757,20 +676,12 @@ static void YZXiaoyaozhiInit(void) {
                 if (gYZDidLoadToken) { [center removeObserver:gYZDidLoadToken]; gYZDidLoadToken = nil; }
                 if (gYZWillUnloadToken) { [center removeObserver:gYZWillUnloadToken]; gYZWillUnloadToken = nil; }
                 if (gYZMemoryWarningToken) { [center removeObserver:gYZMemoryWarningToken]; gYZMemoryWarningToken = nil; }
-                if (gYZDidEnterBackgroundToken) { [center removeObserver:gYZDidEnterBackgroundToken]; gYZDidEnterBackgroundToken = nil; }
             }];
 
             gYZMemoryWarningToken = [nc addObserverForName:UIApplicationDidReceiveMemoryWarningNotification
                                                      object:nil queue:[NSOperationQueue mainQueue]
                                                  usingBlock:^(__unused NSNotification *note) {
                 [[YZMemoryCache shared] purgeOnMemoryWarning];
-                if (gSheetController && !gSheetController.isPresented && !gSheetController.view.superview) gSheetController = nil;
-            }];
-
-            gYZDidEnterBackgroundToken = [nc addObserverForName:UIApplicationDidEnterBackgroundNotification
-                                                         object:nil queue:[NSOperationQueue mainQueue]
-                                                     usingBlock:^(__unused NSNotification *note) {
-                YZDismissGlassSheetIfNeeded();
             }];
 
             CFAbsoluteTime mainTime = CFAbsoluteTimeGetCurrent() - mainStartTime;
