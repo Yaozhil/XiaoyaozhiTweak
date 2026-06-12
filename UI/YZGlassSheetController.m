@@ -946,6 +946,7 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 
     self.view.frame = window.bounds;
     self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.view.userInteractionEnabled = YES;
 
     if (shouldTransition) {
         [self beginAppearanceTransition:YES animated:NO];

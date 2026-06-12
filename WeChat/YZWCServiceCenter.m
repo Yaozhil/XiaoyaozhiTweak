@@ -23,8 +23,6 @@ static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com
 @end
 
 static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController);
-static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *viewController);
-
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
     if ([object isKindOfClass:UIImage.class]) return object;
@@ -338,13 +336,6 @@ static id YZCreateSyntheticRichTextView(NSURL *url, UIViewController *viewContro
     return richTextView;
 }
 
-static BOOL YZCanTryRichTextRoute(NSURL *url) {
-    Class cls = NSClassFromString(@"RichTextView");
-    return url.absoluteString.length > 0 &&
-        cls &&
-        [cls instancesRespondToSelector:NSSelectorFromString(@"clickOnLinkEvent:")];
-}
-
 static void YZDismissControllerAfterRichTextHit(UIViewController *viewController) {
     if (!YZShouldDismissBeforePresenting(viewController)) return;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -355,32 +346,6 @@ static void YZDismissControllerAfterRichTextHit(UIViewController *viewController
             [viewController dismissViewControllerAnimated:YES completion:nil];
         }
     });
-}
-
-static void YZDismissThenOpenURLThroughRichTextView(NSURL *url, UIViewController *viewController, void(^completion)(BOOL opened)) {
-    if (!YZShouldDismissBeforePresenting(viewController)) {
-        BOOL opened = YZOpenURLThroughVisibleRichTextView(url, viewController);
-        if (completion) completion(opened);
-        return;
-    }
-
-    [YZRuntimeLogger logEventSync:@"official_account.richtext.dismiss_first" info:@{
-        @"from": NSStringFromClass(viewController.class) ?: @"unknown"
-    }];
-
-    void (^openAfterDismiss)(void) = ^{
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            BOOL opened = YZOpenURLThroughVisibleRichTextView(url, nil);
-            if (completion) completion(opened);
-        });
-    };
-
-    SEL customDismissSel = NSSelectorFromString(@"dismissAnimatedWithCompletion:");
-    if ([viewController respondsToSelector:customDismissSel]) {
-        ((void (*)(id, SEL, void (^)(void)))objc_msgSend)(viewController, customDismissSel, openAfterDismiss);
-    } else {
-        [viewController dismissViewControllerAnimated:YES completion:openAfterDismiss];
-    }
 }
 
 static BOOL YZOpenURLThroughVisibleRichTextView(NSURL *url, UIViewController *viewController) {
@@ -1258,10 +1223,6 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
     void (^finishNoSafeRoute)(void) = ^{
         YZLogOfficialAccountRouteProbe();
-        if (YZShouldDismissBeforePresenting(viewController) && YZCanTryRichTextRoute(url)) {
-            YZDismissThenOpenURLThroughRichTextView(url, viewController, finish);
-            return;
-        }
         if (YZOpenURLThroughVisibleRichTextView(url, viewController)) {
             finish(YES);
             return;
