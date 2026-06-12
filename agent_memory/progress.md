@@ -9,6 +9,7 @@
 - 当前正在完善“投喂一下”：目标是点击后直接进入微信打赏页，且失败时留下明确运行日志。
 - 用户真机反馈“投喂一下”点击显示失败，日志确认为 `最近打赏路由: failed:no-image`，说明安装后未能从文件路径读取打赏码。
 - 用户真机反馈内嵌打赏码后点击只有震动、无视觉反应；日志已到 `donation.open.hit` 且 `route=scan:ScanQRCodeLogicController`，说明裸 `scanOnePicture:` 被调用但没有完成结果展示。
+- 用户真机反馈完整扫码初始化后会弹出微信 `local error.`，点确定后黑屏卡死；日志显示 `route=initWithParams:params:codeTypeFromScene` 但 `host=YZGlassSheetController`，说明扫码链路进入了微信本地错误页，且插件面板提前 dismiss 造成黑屏。
 
 ## 已完成
 
@@ -22,11 +23,12 @@
 - 运行日志已改为短滚动：复制反馈只包含最近 40 条，单行会截断，避免历史功能日志过长导致无法复制。
 - 已新增内嵌打赏码 provider：优先读取安装包文件，缺失时回落到 dylib 内嵌图片，避免签名/安装流程漏掉 `layout/` 资源后直接 `no-image`。
 - 已补充更完整的扫码初始化：优先使用微信原生 host + `ScanQRCodeLogicParams` + `initWithViewController:logicParams:`，并在扫码命中后移除插件面板，避免结果页被面板盖住；仍不 present 私有扫码控制器。
+- 已撤销扫码命中后自动 dismiss，避免 `local error` 后露出黑屏；内嵌打赏码改为原始 PNG，避免 JPEG 压缩破坏微信打赏码识别；微信 host 查找改为递归寻找原生导航并跳过插件控制器。
 
 ## 下一步
 
 - 等待 GitHub Actions 构建结果。
-- 真机复测“投喂一下”，重点看 `donation.open.hit` 的 `route` 是否为 `initWithParams:*`，以及面板关闭后是否出现微信打赏页。
+- 真机复测“投喂一下”，重点看 `donation.open.hit` 的 `host` 是否不再是 `YZGlassSheetController`，以及是否仍出现 `local error.`。
 
 ## 验证
 

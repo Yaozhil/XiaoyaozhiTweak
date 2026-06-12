@@ -7,6 +7,7 @@
 - 新版“投喂一下”重新尝试直达打赏页，但只调用 `ScanQRCodeLogicController scanOnePicture:`，不 present 私有扫码控制器；真机仍需确认微信 8.0.74 是否会把安装包内打赏码识别结果自动带到打赏页。若日志为 `donation.open.hit` 但视觉不跳转，说明需要继续寻找微信扫码结果分发链路，而不是恢复旧 present 路线。
 - 用户真机反馈新版点击“投喂一下”只显示失败，运行反馈为 `failed:no-image`；根因不是扫码链路，而是签名/安装后的 `layout/` 图片资源未被读取。当前已新增 dylib 内嵌打赏码作为兜底，后续若仍失败应重点看是否进入 `donation.open.image {"source":"embedded"}` 与 `donation.open.hit`。
 - 内嵌打赏码后真机日志显示 `donation.open.hit`，但视觉上只有震动；说明裸 `ScanQRCodeLogicController scanOnePicture:` 可能只启动识别、不负责展示结果，或结果页被插件面板遮挡。当前已改为微信原生 host + `ScanQRCodeLogicParams` 初始化，并在命中后移除插件面板；仍禁止恢复旧的私有扫码控制器 present 路线。
+- 完整扫码初始化真机进入微信 `local error.`，点确定后黑屏卡死；当时日志为 `route=initWithParams:params:codeTypeFromScene` 且 `host=YZGlassSheetController`。当前已撤销命中后 dismiss、内嵌图改为原始 PNG、host 查找改为跳过插件控制器的微信原生导航递归查找。后续不得再用压缩 JPEG 打赏码作为识别源，也不得在未确认页面成功展示前关闭插件面板。
 - 用户真机反馈：停在功能列表长时间不动曾导致微信闪退；此前高风险点是菜单页后台线程调用微信私有 `CContactMgr`/头像获取链路，已收回主线程并移除异步头像刷新。
 - 用户测试微信账号处于功能受限状态，无法作为公众号自动关注成功与否的最终验证样本。
 - 底部关注失败兜底曾只提示“请手动搜索关注”，原因是 `openBrandProfile` 过度依赖 `CContactMgr`/本地联系人对象；后续调用 `weixin://dl/businessWebview` 会因定制包 bundle id 不同而跳到官方微信并弹 `invalid_source`，自建 WKWebView 又会显示“请在微信客户端打开链接”，动态枚举出的微信 Web/WebView/load/jump 分发服务真机仍会黑屏。当前底部入口保留跳转，但只尝试固定白名单里的高层 URL/Link router，命不中时复制公众号名称并提示搜索关注。

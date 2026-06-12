@@ -28,6 +28,7 @@ static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com
 
 static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController);
 static UINavigationController *YZWeChatRootNavController(void);
+static UINavigationController *YZFindNavigationController(UIViewController *controller);
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
     if ([object isKindOfClass:UIImage.class]) return object;
@@ -173,8 +174,11 @@ static UIViewController *YZDonationHostViewController(UIViewController *fallback
     UINavigationController *nav = YZWeChatRootNavController();
     UIViewController *host = nav.visibleViewController ?: nav.topViewController;
     if (host) return host;
-    if (fallback.navigationController) return fallback.navigationController.visibleViewController ?: fallback.navigationController.topViewController;
-    return fallback ?: [YZWCServiceCenter topMostViewController];
+    if (fallback && ![NSStringFromClass(fallback.class) isEqualToString:@"YZGlassSheetController"]) {
+        if (fallback.navigationController) return fallback.navigationController.visibleViewController ?: fallback.navigationController.topViewController;
+        return fallback;
+    }
+    return nil;
 }
 
 static id YZNewDonationLogicParams(NSString **routeName) {
@@ -1037,6 +1041,28 @@ static void YZLogOfficialAccountRouteProbe(void) {
 }
 
 /// 获取微信主窗口的根导航控制器（穿透 modal sheet）
+static BOOL YZIsPluginViewController(UIViewController *controller) {
+    if (!controller) return NO;
+    NSString *className = NSStringFromClass(controller.class);
+    return [className hasPrefix:@"YZ"] || [className hasPrefix:@"Xiaoyaozhi"];
+}
+
+static UINavigationController *YZFindNavigationController(UIViewController *controller) {
+    if (!controller || YZIsPluginViewController(controller)) return nil;
+    if ([controller isKindOfClass:UINavigationController.class]) {
+        return (UINavigationController *)controller;
+    }
+    if ([controller isKindOfClass:UITabBarController.class]) {
+        UINavigationController *selectedNav = YZFindNavigationController(((UITabBarController *)controller).selectedViewController);
+        if (selectedNav) return selectedNav;
+    }
+    for (UIViewController *child in controller.childViewControllers) {
+        UINavigationController *nav = YZFindNavigationController(child);
+        if (nav) return nav;
+    }
+    return controller.navigationController;
+}
+
 static UINavigationController *YZWeChatRootNavController(void) {
     UIWindow *keyWindow = nil;
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
@@ -1058,7 +1084,7 @@ static UINavigationController *YZWeChatRootNavController(void) {
             return (UINavigationController *)selected;
         }
     }
-    return root.navigationController;
+    return YZFindNavigationController(root);
 }
 
 static BOOL YZLooksLikeAvatarImage(UIImage *image) {
