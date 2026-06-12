@@ -3,8 +3,10 @@
 static NSMutableArray<NSString *> *sYZRuntimeLogBuffer = nil;
 static dispatch_queue_t sYZRuntimeLogQueue = nil;
 static NSString *sYZRuntimeLogPath = nil;
-static const NSUInteger kYZRuntimeLogMaxEntries = 220;
-static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
+static const NSUInteger kYZRuntimeLogMaxEntries = 80;
+static const NSUInteger kYZRuntimeLogReportEntries = 40;
+static const NSUInteger kYZRuntimeLogMaxLineLength = 900;
+static const unsigned long long kYZRuntimeLogMaxFileSize = 24 * 1024;
 
 @implementation YZRuntimeLogger
 
@@ -39,6 +41,12 @@ static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
         if (json.length > 0) return [NSString stringWithFormat:@" %@", json];
     }
     return [NSString stringWithFormat:@" %@", info];
+}
+
++ (NSString *)compactLine:(NSString *)line {
+    if (line.length <= kYZRuntimeLogMaxLineLength) return line;
+    NSString *prefix = [line substringToIndex:kYZRuntimeLogMaxLineLength];
+    return [prefix stringByAppendingString:@"... [truncated]"];
 }
 
 + (void)writeLineToFile:(NSString *)line {
@@ -78,6 +86,7 @@ static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
 
 + (void)appendLine:(NSString *)line sync:(BOOL)sync {
     if (line.length == 0) return;
+    line = [self compactLine:line];
 
     [self rememberLine:line];
 
@@ -162,6 +171,9 @@ static const unsigned long long kYZRuntimeLogMaxFileSize = 96 * 1024;
     }
 
     while (merged.count > kYZRuntimeLogMaxEntries) {
+        [merged removeObjectAtIndex:0];
+    }
+    while (merged.count > kYZRuntimeLogReportEntries) {
         [merged removeObjectAtIndex:0];
     }
     return [merged componentsJoinedByString:@"\n"] ?: @"";

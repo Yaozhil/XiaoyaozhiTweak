@@ -13,8 +13,10 @@ static NSData *sCachedProfileData = nil;
 static NSString *sCachedProfileString = nil;
 static UIImage *sCachedSelfAvatar = nil;
 static NSString *sLastOfficialAccountOpenResult = nil;
+static NSString *sLastDonationOpenResult = nil;
 static __weak id sRememberedRichTextLinkHandler = nil;
 static id sSyntheticRichTextLinkHandler = nil;
+static id sDonationScanController = nil;
 static NSString *const kYZOfficialAccountUserName = @"gh_5a0621af5c7d";
 static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com/mp/profile_ext?action=home&__biz=Mzk2NDE2MjU5Ng==&scene=124";
 
@@ -132,6 +134,103 @@ static BOOL YZInvokeSelectorWithArguments(id target, NSString *selectorName, NSA
         NSLog(@"[小杳知] URL selector %@ failed: %@", selectorName, exception.reason);
     }
     return NO;
+}
+
+static UIImage *YZDonationImage(NSString **sourceName) {
+    NSArray<NSString *> *paths = @[
+        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
+        @"/Library/Application Support/XiaoyaozhiTweak/reward_qr.png",
+        @"/var/jb/Library/Application Support/XiaoyaozhiTweak/donation.png",
+        @"/Library/Application Support/XiaoyaozhiTweak/donation.png",
+        @"/var/jb/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
+        @"/Library/MobileSubstrate/DynamicLibraries/XiaoyaozhiDonation.png",
+        @"/var/jb/Library/Application Support/com.rouneed.xiaoyaozhi/reward_qr.png",
+        @"/Library/Application Support/com.rouneed.xiaoyaozhi/reward_qr.png"
+    ];
+
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    for (NSString *path in paths) {
+        if (![fileManager fileExistsAtPath:path]) continue;
+        UIImage *image = [UIImage imageWithContentsOfFile:path];
+        if (image) {
+            if (sourceName) *sourceName = path.lastPathComponent ?: @"file";
+            return image;
+        }
+    }
+    return nil;
+}
+
+static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *viewController) {
+    if (!image) {
+        sLastDonationOpenResult = @"failed:no-image";
+        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{@"reason": @"no-image"}];
+        return NO;
+    }
+
+    Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
+    if (!scanClass) {
+        sLastDonationOpenResult = @"failed:no-scan-class";
+        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{@"reason": @"no-scan-class"}];
+        return NO;
+    }
+
+    id controller = nil;
+    @try {
+        controller = [[scanClass alloc] init];
+    } @catch (NSException *exception) {
+        sLastDonationOpenResult = @"failed:init-exception";
+        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{
+            @"reason": @"init-exception",
+            @"class": NSStringFromClass(scanClass) ?: @"unknown",
+            @"exception": exception.name ?: @"unknown"
+        }];
+        return NO;
+    }
+    if (!controller) {
+        sLastDonationOpenResult = @"failed:init-empty";
+        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{@"reason": @"init-empty"}];
+        return NO;
+    }
+
+    if (![controller respondsToSelector:NSSelectorFromString(@"scanOnePicture:")]) {
+        sLastDonationOpenResult = @"failed:no-scan-selector";
+        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{
+            @"reason": @"no-scan-selector",
+            @"class": NSStringFromClass([controller class]) ?: @"unknown"
+        }];
+        return NO;
+    }
+
+    UIViewController *host = viewController ?: [YZWCServiceCenter topMostViewController];
+    YZInvokeSelectorWithArguments(controller, @"setIsFromAlbum:", @[@YES]);
+    YZInvokeSelectorWithArguments(controller, @"setPicFrom:", @[@1]);
+    if (host) {
+        YZInvokeSelectorWithArguments(controller, @"setHostViewController:", @[host]);
+    }
+
+    sDonationScanController = controller;
+    BOOL sent = YZInvokeSelectorWithArguments(controller, @"scanOnePicture:", @[image]);
+    if (!sent) {
+        sLastDonationOpenResult = @"failed:scan-call";
+        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{
+            @"reason": @"scan-call",
+            @"class": NSStringFromClass([controller class]) ?: @"unknown"
+        }];
+        if (sDonationScanController == controller) sDonationScanController = nil;
+        return NO;
+    }
+
+    sLastDonationOpenResult = [NSString stringWithFormat:@"scan:%@", NSStringFromClass([controller class]) ?: @"unknown"];
+    [YZRuntimeLogger logEventSync:@"donation.open.hit" info:@{
+        @"class": NSStringFromClass([controller class]) ?: @"unknown",
+        @"selector": @"scanOnePicture:",
+        @"host": host ? NSStringFromClass(host.class) : @"nil"
+    }];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (sDonationScanController == controller) sDonationScanController = nil;
+    });
+    return YES;
 }
 
 static BOOL YZSelectorHasVoidReturn(id target, SEL selector) {
@@ -1288,6 +1387,32 @@ static UIImage *YZAvatarFromWeChatImageManagers(NSString *userName) {
 
 + (NSString *)lastOfficialAccountOpenResult {
     return sLastOfficialAccountOpenResult ?: @"none";
+}
+
++ (void)openDonationPageFromViewController:(UIViewController *)viewController
+                                completion:(void(^)(BOOL opened))completion {
+    [YZRuntimeLogger logEventSync:@"donation.open.begin" info:@{@"from": viewController ? NSStringFromClass(viewController.class) : @"nil"}];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSString *sourceName = nil;
+        UIImage *image = YZDonationImage(&sourceName);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!image) {
+                sLastDonationOpenResult = @"failed:no-image";
+                [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{@"reason": @"no-image"}];
+                if (completion) completion(NO);
+                return;
+            }
+
+            [YZRuntimeLogger logEventSync:@"donation.open.image" info:@{@"source": sourceName ?: @"unknown"}];
+            BOOL opened = YZScanDonationImageWithWeChat(image, viewController);
+            if (completion) completion(opened);
+        });
+    });
+}
+
++ (NSString *)lastDonationOpenResult {
+    return sLastDonationOpenResult ?: @"none";
 }
 
 + (NSString *)officialAccountProfileURL {

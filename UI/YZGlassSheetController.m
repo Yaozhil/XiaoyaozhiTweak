@@ -824,6 +824,16 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
 - (void)showRewardSheet {
     UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
     [gen impactOccurred];
+    [YZRuntimeLogger logEventSync:@"sheet.reward_tap.begin" info:nil];
+    [YZWCServiceCenter openDonationPageFromViewController:self completion:^(BOOL opened) {
+        [YZRuntimeLogger logEventSync:@"sheet.reward_tap.result" info:@{
+            @"opened": @(opened),
+            @"route": [YZWCServiceCenter lastDonationOpenResult] ?: @"none"
+        }];
+        if (!opened) {
+            [self showToast:@"打开打赏页失败，已记录运行日志"];
+        }
+    }];
 }
 
 - (void)openManualFollowFallback {
@@ -869,7 +879,8 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     [lines addObject:[NSString stringWithFormat:@"证书到期: %@", [YZWCServiceCenter getCertificateExpirationDate] ?: @"未知"]];
     [lines addObject:[NSString stringWithFormat:@"公众号状态: %@ (%ld)", followText, (long)self.followState]];
     [lines addObject:[NSString stringWithFormat:@"最近路由: %@", [YZWCServiceCenter lastOfficialAccountOpenResult] ?: @"none"]];
-    [lines addObject:@"---- 最近运行日志 ----"];
+    [lines addObject:[NSString stringWithFormat:@"最近打赏路由: %@", [YZWCServiceCenter lastDonationOpenResult] ?: @"none"]];
+    [lines addObject:@"---- 最近运行日志（最多40条） ----"];
 
     NSString *logText = [YZRuntimeLogger recentLogText];
     [lines addObject:logText.length > 0 ? logText : @"暂无运行日志"];

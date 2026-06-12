@@ -36,6 +36,13 @@
 /// 最近一次公众号主页路由结果，用于诊断
 + (NSString *)lastOfficialAccountOpenResult;
 
+/// 通过微信二维码识别链路打开打赏页
++ (void)openDonationPageFromViewController:(UIViewController *)viewController
+                                completion:(void(^)(BOOL opened))completion;
+
+/// 最近一次打赏页路由结果，用于诊断
++ (NSString *)lastDonationOpenResult;
+
 /// 公众号主页原始链接，用于失败兜底和诊断
 + (NSString *)officialAccountProfileURL;
 
