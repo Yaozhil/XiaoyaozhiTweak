@@ -39,6 +39,7 @@
 - 最新反馈显示低敏尝试失败在 `official_account.richtext.failed {"reason":"no-visible-richtext"}`，说明插件弹层打开时无法从窗口层级直接遍历到可用 `RichTextView`。已新增弱引用缓存：用户手动点击微信原生链接并命中 `RichTextView:clickOnLinkEvent:` 或 `clickOnWeAppMPShortLink:` 时，仅缓存处理器对象本身（弱引用）和记录类名；底部胶囊优先复用该真实处理器，弱引用失效或不在窗口中则回退继续扫描/失败兜底。
 - 用户确认聊天框状态下无法打开小杳知插件，因此测试流程不能要求“回到聊天页再打开插件”。已放宽缓存处理器复用条件：弱引用还活着且不是插件自身视图时即可尝试，不再强制要求 `RichTextView.window != nil`；日志记录 `official_account.richtext.cached` 时附带 `inWindow`，用于判断离开聊天页后处理器是否仍存活。
 - 最新文件反馈显示手动点击微信原生链接时已缓存 `RichTextView`，但底部胶囊点击时没有出现 `official_account.richtext.cached`，说明弱引用处理器在离开聊天场景后已经释放。当前改为低敏 synthetic 路线：无可复用真实 `RichTextView` 时临时创建一个 1x1 的 `RichTextView`，只写入固定公众号主页 URL 和公开文本 `Official Account`，调用微信自己的 `clickOnLinkEvent:`；不读取/记录聊天内容，不发送消息，不调用 WebView/A8Key/AppDelegate/外部 scheme。临时对象仅强引用约 5 秒，命中后延迟收起插件浮层，避免跳转被浮层遮住。
+- 用户最新反馈确认底部胶囊已经可跳转公众号主页，日志显示 `richtext:synthetic`、`official_account.richtext.hit {"source":"synthetic"}`；但从公众号主页返回后，原插件功能列表无法点击，需重新进入插件才恢复。判断为 synthetic RichTextView 是挂在 `YZGlassSheetController` 上触发，返回后插件面板进入半失活状态。当前改为无安全 URL router 时先 `dismissAnimatedWithCompletion:` 收起插件，再在微信主界面延迟 0.15 秒创建/触发 synthetic RichTextView；关注状态 UI 保持用户要求：确认 `state=1` 显示“已关注”，不确定 `state=-1` 仍显示“去关注”。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。
@@ -97,3 +98,4 @@
 - 本次运行日志改动已运行 `git diff --check`，无空白错误；已搜索活跃代码，未重新引入 `weixin://`、`WKWebView`、`MMWebView`、`WCWebView`、`Universal Link`、`openWebView`、`loadURL`、`jump` 等禁用/高风险路径。
 - 本次 synthetic RichTextView 改动已运行 `git diff --check`，无空白错误；已搜索活跃代码，未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描路线。
 - GitHub Actions 对提交 `2959309` 构建失败，错误是 `YZWCServiceCenter.m` 中新增 helper 位于 `@implementation` 前，编译器尚未知 `+topMostViewController` 和 `YZShouldDismissBeforePresenting`。已补 `YZWCServiceCenter` 私有类扩展和 `YZShouldDismissBeforePresenting` 前向声明；该修复只影响编译声明，不改变运行逻辑。
+- 本次“先收起插件再触发 synthetic RichTextView”改动已运行 `git diff --check`，无空白错误；敏感路线扫描未重新引入文件传输助手/消息发送、A8Key、WebView、AppDelegate/Universal Link、外部 scheme 或 `objc_getClassList` 全类扫描。
