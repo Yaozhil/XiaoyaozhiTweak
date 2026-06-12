@@ -33,7 +33,6 @@ static NSString *const kYZAlertContent = @"\n- 欢迎体验本产品（小杳专
 static NSString *const kYZAlertButtonText = @"已知晓";
 static NSString *const kYZAlertCancelText = @"请先阅读";
 static NSString *const kYZOfficialAccountID = @"gh_5a0621af5c7d";
-static NSString *const kYZOfficialAccountName = @"杳知爱吃米饭";
 static NSString *const kYZAlertFlowRevision = @"auto-follow-context-v2";
 static NSString *const kYZMaoPluginManagerClassName = @"WCPluginsMgr";
 static NSString *const kYZMaoPluginControllerClassName = @"YZGlassSheetController";
