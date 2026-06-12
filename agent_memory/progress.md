@@ -40,6 +40,7 @@
 - 用户确认聊天框状态下无法打开小杳知插件，因此测试流程不能要求“回到聊天页再打开插件”。已放宽缓存处理器复用条件：弱引用还活着且不是插件自身视图时即可尝试，不再强制要求 `RichTextView.window != nil`；日志记录 `official_account.richtext.cached` 时附带 `inWindow`，用于判断离开聊天页后处理器是否仍存活。
 - 最新文件反馈显示手动点击微信原生链接时已缓存 `RichTextView`，但底部胶囊点击时没有出现 `official_account.richtext.cached`，说明弱引用处理器在离开聊天场景后已经释放。当前改为低敏 synthetic 路线：无可复用真实 `RichTextView` 时临时创建一个 1x1 的 `RichTextView`，只写入固定公众号主页 URL 和公开文本 `Official Account`，调用微信自己的 `clickOnLinkEvent:`；不读取/记录聊天内容，不发送消息，不调用 WebView/A8Key/AppDelegate/外部 scheme。临时对象仅强引用约 5 秒，命中后延迟收起插件浮层，避免跳转被浮层遮住。
 - 用户最新反馈确认底部胶囊已经可跳转公众号主页，日志显示 `richtext:synthetic`、`official_account.richtext.hit {"source":"synthetic"}`；但从公众号主页返回后，原插件功能列表无法点击，需重新进入插件才恢复。判断为 synthetic RichTextView 是挂在 `YZGlassSheetController` 上触发，返回后插件面板进入半失活状态。当前改为无安全 URL router 时先 `dismissAnimatedWithCompletion:` 收起插件，再在微信主界面延迟 0.15 秒创建/触发 synthetic RichTextView；关注状态 UI 保持用户要求：确认 `state=1` 显示“已关注”，不确定 `state=-1` 仍显示“去关注”。
+- 用户补充要求：如果已确认关注，点击底部胶囊显示“已关注公众号”。当前在 `UI/YZGlassSheetController.m` 的 `handleFollowTap` 中仅当 `followState == 1` 时记录 `sheet.follow_tap.already_followed` 并 toast “已关注公众号”；`-1` 无法确认仍按“去关注”入口跳转公众号主页。
 - 已按用户要求将“投喂一下”改为仅触发 `UIImpactFeedbackGenerator` 震动。
 - 已移除不再使用的赞赏弹窗/赞赏扫码实现：`UI/YZRewardView.h`、`UI/YZRewardView.m`、`UI/YZDonationImageProvider.m`，并从 `Makefile` 移除对应编译项。
 - 已增强微信服务定位：`YZWCRuntime getService:` 会在 `MMServiceCenter defaultCenter` 失败时尝试 `MMContext activeUserContext -> serviceCenter`。

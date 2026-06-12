@@ -845,6 +845,11 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     // 底部胶囊以稳定为先：受限账号和部分微信版本直接调用自动关注私有接口可能闪退。
     // 点击仍要作为公众号主页入口；跳转失败时保留复制公众号名称作为兜底。
     [YZRuntimeLogger logEventSync:@"sheet.follow_tap.begin" info:@{@"state": @(self.followState)}];
+    if (self.followState == 1) {
+        [YZRuntimeLogger logEventSync:@"sheet.follow_tap.already_followed" info:nil];
+        [self showToast:@"已关注公众号"];
+        return;
+    }
     [self openManualFollowFallback];
 }
 
