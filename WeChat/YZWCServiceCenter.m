@@ -27,6 +27,7 @@ static NSString *const kYZOfficialAccountProfileURL = @"https://mp.weixin.qq.com
 @end
 
 static BOOL YZShouldDismissBeforePresenting(UIViewController *viewController);
+static UINavigationController *YZWeChatRootNavController(void);
 static UIImage *YZImageFromAvatarObject(id object) {
     if (!object || object == (id)kCFNull) return nil;
     if ([object isKindOfClass:UIImage.class]) return object;
@@ -168,6 +169,89 @@ static UIImage *YZDonationImage(NSString **sourceName) {
     return nil;
 }
 
+static UIViewController *YZDonationHostViewController(UIViewController *fallback) {
+    UINavigationController *nav = YZWeChatRootNavController();
+    UIViewController *host = nav.visibleViewController ?: nav.topViewController;
+    if (host) return host;
+    if (fallback.navigationController) return fallback.navigationController.visibleViewController ?: fallback.navigationController.topViewController;
+    return fallback ?: [YZWCServiceCenter topMostViewController];
+}
+
+static id YZNewDonationLogicParams(NSString **routeName) {
+    Class paramsClass = NSClassFromString(@"ScanQRCodeLogicParams");
+    if (!paramsClass) return nil;
+
+    SEL initWithCodeTypeFromScene = NSSelectorFromString(@"initWithCodeType:fromScene:");
+    @try {
+        id params = [paramsClass alloc];
+        if ([params respondsToSelector:initWithCodeTypeFromScene]) {
+            id result = ((id (*)(id, SEL, NSInteger, NSInteger))objc_msgSend)(params, initWithCodeTypeFromScene, 27, 2);
+            if (result) {
+                if (routeName) *routeName = @"params:codeTypeFromScene";
+                return result;
+            }
+        }
+    } @catch (__unused NSException *exception) {
+    }
+
+    SEL initWithCodeType = NSSelectorFromString(@"initWithCodeType:");
+    @try {
+        id params = [paramsClass alloc];
+        if ([params respondsToSelector:initWithCodeType]) {
+            id result = ((id (*)(id, SEL, NSInteger))objc_msgSend)(params, initWithCodeType, 27);
+            if (result) {
+                if (routeName) *routeName = @"params:codeType";
+                return result;
+            }
+        }
+    } @catch (__unused NSException *exception) {
+    }
+
+    @try {
+        id result = [[paramsClass alloc] init];
+        if (result && routeName) *routeName = @"params:init";
+        return result;
+    } @catch (__unused NSException *exception) {
+        return nil;
+    }
+}
+
+static id YZNewDonationScanController(UIViewController *host, NSString **routeName) {
+    Class scanClass = NSClassFromString(@"ScanQRCodeLogicController");
+    if (!scanClass) return nil;
+
+    NSString *paramsRoute = nil;
+    id logicParams = YZNewDonationLogicParams(&paramsRoute);
+    SEL initWithHostAndParams = NSSelectorFromString(@"initWithViewController:logicParams:");
+    @try {
+        id controller = [scanClass alloc];
+        if (logicParams && host && [controller respondsToSelector:initWithHostAndParams]) {
+            id result = ((id (*)(id, SEL, id, id))objc_msgSend)(controller, initWithHostAndParams, host, logicParams);
+            if (result) {
+                if (routeName) *routeName = [NSString stringWithFormat:@"initWithParams:%@", paramsRoute ?: @"unknown"];
+                return result;
+            }
+        }
+    } @catch (NSException *exception) {
+        [YZRuntimeLogger logEventSync:@"donation.open.init_failed" info:@{
+            @"route": @"initWithParams",
+            @"exception": exception.name ?: @"unknown"
+        }];
+    }
+
+    @try {
+        id result = [[scanClass alloc] init];
+        if (result && routeName) *routeName = @"bare";
+        return result;
+    } @catch (NSException *exception) {
+        [YZRuntimeLogger logEventSync:@"donation.open.init_failed" info:@{
+            @"route": @"bare",
+            @"exception": exception.name ?: @"unknown"
+        }];
+        return nil;
+    }
+}
+
 static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *viewController) {
     if (!image) {
         sLastDonationOpenResult = @"failed:no-image";
@@ -182,18 +266,9 @@ static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *view
         return NO;
     }
 
-    id controller = nil;
-    @try {
-        controller = [[scanClass alloc] init];
-    } @catch (NSException *exception) {
-        sLastDonationOpenResult = @"failed:init-exception";
-        [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{
-            @"reason": @"init-exception",
-            @"class": NSStringFromClass(scanClass) ?: @"unknown",
-            @"exception": exception.name ?: @"unknown"
-        }];
-        return NO;
-    }
+    UIViewController *host = YZDonationHostViewController(viewController);
+    NSString *initRoute = nil;
+    id controller = YZNewDonationScanController(host, &initRoute);
     if (!controller) {
         sLastDonationOpenResult = @"failed:init-empty";
         [YZRuntimeLogger logEventSync:@"donation.open.failed" info:@{@"reason": @"init-empty"}];
@@ -209,7 +284,6 @@ static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *view
         return NO;
     }
 
-    UIViewController *host = viewController ?: [YZWCServiceCenter topMostViewController];
     YZInvokeSelectorWithArguments(controller, @"setIsFromAlbum:", @[@YES]);
     YZInvokeSelectorWithArguments(controller, @"setPicFrom:", @[@1]);
     if (host) {
@@ -228,9 +302,10 @@ static BOOL YZScanDonationImageWithWeChat(UIImage *image, UIViewController *view
         return NO;
     }
 
-    sLastDonationOpenResult = [NSString stringWithFormat:@"scan:%@", NSStringFromClass([controller class]) ?: @"unknown"];
+    sLastDonationOpenResult = [NSString stringWithFormat:@"scan:%@", initRoute ?: NSStringFromClass([controller class]) ?: @"unknown"];
     [YZRuntimeLogger logEventSync:@"donation.open.hit" info:@{
         @"class": NSStringFromClass([controller class]) ?: @"unknown",
+        @"route": initRoute ?: @"unknown",
         @"selector": @"scanOnePicture:",
         @"host": host ? NSStringFromClass(host.class) : @"nil"
     }];

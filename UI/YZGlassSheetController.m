@@ -830,7 +830,9 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
             @"opened": @(opened),
             @"route": [YZWCServiceCenter lastDonationOpenResult] ?: @"none"
         }];
-        if (!opened) {
+        if (opened) {
+            [self dismissAnimated];
+        } else {
             [self showToast:@"打开打赏页失败，已记录运行日志"];
         }
     }];
