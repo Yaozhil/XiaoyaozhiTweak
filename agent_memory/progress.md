@@ -3,8 +3,8 @@
 ## 当前状态
 
 - 公众号入口与自动关注排查已归档：`agent_memory/archive/2026-06-12-official-account-route.md`。
-- 本地 `main` 与远端 `origin/main` 已同步到本次“投喂一下”打赏跳转与短日志改动。
-- 最近一次 GitHub Actions 构建成功：https://github.com/Yaozhil/XiaoyaozhiTweak/actions/runs/27398531114
+- 本地 `main` 与远端 `origin/main` 已同步到客户版 UI 与自动关注重试改动。
+- 最近一次 GitHub Actions 构建成功：https://github.com/Yaozhil/XiaoyaozhiTweak/actions/runs/27405621958
 - 用户已确认：底部胶囊跳转公众号主页正常，返回后插件功能列表正常。
 - 当前已按客户版收口：主菜单第二项由“运行日志”改为“常用功能”，点击仅震动并提示“暂未开放”；公开运行日志复制入口已移除，内部滚动日志仍保留用于后续排查。
 - 用户真机反馈“投喂一下”点击显示失败，日志确认为 `最近打赏路由: failed:no-image`，说明安装后未能从文件路径读取打赏码。
@@ -16,7 +16,7 @@
 - 插件公开版本保持 `1.0.8`。
 - 首次弹窗“已知晓”后自动关注保留，当前可命中品牌号关注 selector。
 - 底部胶囊使用 `richtext:synthetic` 打开公众号主页。
-- 已确认关注时点击底部胶囊提示 `已关注公众号`；无法确认时仍按“去关注”入口处理。
+- 底部胶囊客户版行为已改为无论是否已关注都点击震动并跳转公众号主页；不再复制公众号名称或主页链接，也不再因已关注而只提示不跳转。
 - 公开运行日志入口已移除，客户版不再展示“运行日志”菜单或复制反馈入口。
 - 已避开文件传输助手消息、WebView/A8Key/AppDelegate/外部 scheme、全类扫描等高风险路线。
 - “投喂一下”已接入安装包内打赏码加载与微信 `ScanQRCodeLogicController scanOnePicture:` 路线；运行反馈新增“最近打赏路由”。

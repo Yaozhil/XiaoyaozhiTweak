@@ -836,31 +836,24 @@ static NSArray<NSString *> *sOrderedEntitlementNamesCache = nil;
     }];
 }
 
-- (void)openManualFollowFallback {
-    NSString *profileURL = [YZWCServiceCenter officialAccountProfileURL] ?: @"";
-    UIPasteboard.generalPasteboard.string = [NSString stringWithFormat:@"公众号：杳知爱吃米饭\n主页：%@", profileURL];
-    [YZRuntimeLogger logEventSync:@"sheet.follow_tap.copy_fallback" info:@{@"has_url": @(profileURL.length > 0)}];
+- (void)openOfficialAccountProfile {
+    [YZRuntimeLogger logEventSync:@"sheet.follow_tap.open_profile" info:nil];
     [YZWCServiceCenter openBrandProfile:kGHUserName fromViewController:self completion:^(BOOL opened) {
         [YZRuntimeLogger logEventSync:@"sheet.follow_tap.result" info:@{
             @"opened": @(opened),
             @"route": [YZWCServiceCenter lastOfficialAccountOpenResult] ?: @"none"
         }];
         if (!opened) {
-            [self showToast:@"跳转失败，已复制公众号名称和主页链接"];
+            [self showToast:@"跳转失败，请稍后再试"];
         }
     }];
 }
 
 - (void)handleFollowTap {
-    // 底部胶囊以稳定为先：受限账号和部分微信版本直接调用自动关注私有接口可能闪退。
-    // 点击仍要作为公众号主页入口；跳转失败时保留复制公众号名称作为兜底。
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
+    [gen impactOccurred];
     [YZRuntimeLogger logEventSync:@"sheet.follow_tap.begin" info:@{@"state": @(self.followState)}];
-    if (self.followState == 1) {
-        [YZRuntimeLogger logEventSync:@"sheet.follow_tap.already_followed" info:nil];
-        [self showToast:@"已关注公众号"];
-        return;
-    }
-    [self openManualFollowFallback];
+    [self openOfficialAccountProfile];
 }
 
 - (void)showToast:(NSString *)msg {
